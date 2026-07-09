@@ -1,5 +1,7 @@
 package com.kaio.runtracker.dto;
 
+import java.time.LocalDate;
+
 public class WorkoutResponseDTO {
 
     private Long id;
@@ -7,19 +9,22 @@ public class WorkoutResponseDTO {
     private String tipo;
     private String descricao;
     private String diaSemana;
+    private LocalDate dataPlanejada;
     private Double distanciaKm;
     private String paceAlvo;
     private String observacoes;
     private String status;
 
     public WorkoutResponseDTO(Long id, String titulo, String tipo, String descricao,
-                              String diaSemana, Double distanciaKm, String paceAlvo,
+                              String diaSemana, LocalDate dataPlanejada,
+                              Double distanciaKm, String paceAlvo,
                               String observacoes, String status) {
         this.id = id;
         this.titulo = titulo;
         this.tipo = tipo;
         this.descricao = descricao;
         this.diaSemana = diaSemana;
+        this.dataPlanejada = dataPlanejada;
         this.distanciaKm = distanciaKm;
         this.paceAlvo = paceAlvo;
         this.observacoes = observacoes;
@@ -44,6 +49,10 @@ public class WorkoutResponseDTO {
 
     public String getDiaSemana() {
         return diaSemana;
+    }
+
+    public LocalDate getDataPlanejada() {
+        return dataPlanejada;
     }
 
     public Double getDistanciaKm() {

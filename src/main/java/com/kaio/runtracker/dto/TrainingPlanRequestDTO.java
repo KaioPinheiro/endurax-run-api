@@ -10,7 +10,6 @@ public class TrainingPlanRequestDTO {
     @NotBlank(message = "O objetivo do plano é obrigatório")
     private String objetivo;
 
-    @NotBlank(message = "O nível do plano é obrigatório")
     private String nivel;
 
     @NotBlank(message = "A descrição do plano é obrigatória")

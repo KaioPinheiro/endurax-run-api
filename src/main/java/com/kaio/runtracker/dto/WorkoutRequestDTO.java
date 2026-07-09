@@ -4,6 +4,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 
+import java.time.LocalDate;
+
 public class WorkoutRequestDTO {
 
     @NotBlank(message = "O título do treino é obrigatório")
@@ -17,6 +19,9 @@ public class WorkoutRequestDTO {
 
     @NotBlank(message = "O dia da semana é obrigatório")
     private String diaSemana;
+
+    @NotNull(message = "A data planejada é obrigatória")
+    private LocalDate dataPlanejada;
 
     @NotNull(message = "A distância é obrigatória")
     @Positive(message = "A distância deve ser maior que zero")
@@ -66,6 +71,14 @@ public class WorkoutRequestDTO {
 
     public void setDiaSemana(String diaSemana) {
         this.diaSemana = diaSemana;
+    }
+
+    public LocalDate getDataPlanejada() {
+        return dataPlanejada;
+    }
+
+    public void setDataPlanejada(LocalDate dataPlanejada) {
+        this.dataPlanejada = dataPlanejada;
     }
 
     public Double getDistanciaKm() {

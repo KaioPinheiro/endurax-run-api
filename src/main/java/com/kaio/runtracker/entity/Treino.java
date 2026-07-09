@@ -31,4 +31,8 @@ public class Treino {
     private String paceMedio;
 
     private String observacoes;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User user;
 }

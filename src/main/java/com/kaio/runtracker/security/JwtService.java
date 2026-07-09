@@ -1,6 +1,7 @@
 package com.kaio.runtracker.security;
 
 import com.kaio.runtracker.entity.User;
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
@@ -28,5 +29,26 @@ public class JwtService {
                 .setExpiration(new Date(agora + 86400000))
                 .signWith(SECRET_KEY)
                 .compact();
+    }
+
+    public String extrairEmail(String token) {
+        return extrairTodosClaims(token).getSubject();
+    }
+
+    public boolean isTokenValido(String token) {
+        try {
+            extrairTodosClaims(token);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private Claims extrairTodosClaims(String token) {
+        return Jwts.parserBuilder()
+                .setSigningKey(SECRET_KEY)
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
     }
 }

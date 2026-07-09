@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDate;
+
 @Entity
 @Table(name = "workouts")
 @Getter
@@ -24,6 +26,9 @@ public class Workout {
     @Column(name = "dia_semana")
     private String diaSemana;
 
+    @Column(name = "data_planejada")
+    private LocalDate dataPlanejada;
+
     @Column(name = "distancia_km")
     private Double distanciaKm;
 
@@ -38,4 +43,8 @@ public class Workout {
     @ManyToOne
     @JoinColumn(name = "training_plan_id")
     private TrainingPlan trainingPlan;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User user;
 }

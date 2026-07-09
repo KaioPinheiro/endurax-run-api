@@ -9,6 +9,7 @@ import com.kaio.runtracker.entity.Workout;
 import com.kaio.runtracker.repository.TrainingPlanRepository;
 import com.kaio.runtracker.repository.UserRepository;
 import com.kaio.runtracker.repository.WorkoutRepository;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -19,13 +20,16 @@ public class UserService {
     private final UserRepository userRepository;
     private final TrainingPlanRepository trainingPlanRepository;
     private final WorkoutRepository workoutRepository;
+    private final PasswordEncoder passwordEncoder;
 
     public UserService(UserRepository userRepository,
                        TrainingPlanRepository trainingPlanRepository,
-                       WorkoutRepository workoutRepository) {
+                       WorkoutRepository workoutRepository,
+                       PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.trainingPlanRepository = trainingPlanRepository;
         this.workoutRepository = workoutRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public List<UserResponseDTO> listarTodos() {
@@ -46,7 +50,7 @@ public class UserService {
 
         user.setNome(dto.getNome());
         user.setEmail(dto.getEmail());
-        user.setSenha(dto.getSenha());
+        user.setSenha(passwordEncoder.encode(dto.getSenha()));
         user.setRole(dto.getRole());
 
         if (dto.getTrainingPlanId() != null) {
@@ -134,6 +138,7 @@ public class UserService {
                 workout.getTipo(),
                 workout.getDescricao(),
                 workout.getDiaSemana(),
+                workout.getDataPlanejada(),
                 workout.getDistanciaKm(),
                 workout.getPaceAlvo(),
                 workout.getObservacoes(),
