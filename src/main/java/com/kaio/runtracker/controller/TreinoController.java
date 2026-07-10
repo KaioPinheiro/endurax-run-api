@@ -6,13 +6,11 @@ import com.kaio.runtracker.service.TreinoService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.bind.annotation.CrossOrigin;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/treinos")
-@CrossOrigin(origins = "http://localhost:5173")
 public class TreinoController {
 
     private final TreinoService treinoService;

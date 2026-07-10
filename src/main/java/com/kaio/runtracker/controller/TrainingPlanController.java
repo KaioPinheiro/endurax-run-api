@@ -12,7 +12,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/training-plans")
-@CrossOrigin(origins = "http://localhost:5173")
 public class TrainingPlanController {
 
     private final TrainingPlanService trainingPlanService;
