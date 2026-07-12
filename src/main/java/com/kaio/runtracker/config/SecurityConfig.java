@@ -46,7 +46,8 @@ public class SecurityConfig {
 
         configuration.setAllowedOrigins(List.of(
                 "http://localhost:5173",
-                "https://runpace-app.vercel.app"
+                "https://www.enduraxrun.com.br",
+                "https://enduraxrun.com.br"
         ));
         configuration.setAllowedMethods(List.of(
                 "GET",
