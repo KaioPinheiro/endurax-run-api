@@ -45,6 +45,41 @@ public class OpenAIService {
     }
 
     public String enviarPromptPlanoSemanal(String systemPrompt, String userPrompt) {
+        return enviarPrompt(
+                systemPrompt,
+                userPrompt,
+                "plano semanal",
+                "A IA retornou uma resposta semanal vazia.",
+                "A IA retornou um plano semanal em formato inválido. Tente novamente.",
+                "Não foi possível processar o plano semanal. Tente novamente.",
+                "A OpenAI não conseguiu gerar o plano semanal agora."
+        );
+    }
+
+    public String enviarPromptPlanoTreino(String systemPrompt, String userPrompt) {
+        return enviarPrompt(
+                systemPrompt,
+                userPrompt,
+                "plano completo",
+                "A IA retornou uma resposta vazia para o plano completo.",
+                "A IA retornou um plano em formato inválido. Tente novamente.",
+                "Não foi possível processar o plano. Tente novamente.",
+                "A OpenAI não conseguiu gerar o plano agora."
+        );
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    private String enviarPrompt(
+            String systemPrompt,
+            String userPrompt,
+            String contexto,
+            String mensagemRespostaVazia,
+            String mensagemJsonInvalido,
+            String mensagemErroInesperado,
+            String mensagemErroOpenAI) {
         validarConfiguracao();
 
         Map<String, Object> body = Map.of(
@@ -56,6 +91,7 @@ public class OpenAIService {
                 "response_format", Map.of("type", "json_object")
         );
 
+        long inicio = System.nanoTime();
         try {
             String responseBody = restClient.post()
                     .uri(OPENAI_URL)
@@ -74,28 +110,38 @@ public class OpenAIService {
                             .path("message").path("content").asText(null);
 
             if (!StringUtils.hasText(content)) {
-                throw erroFormato("A IA retornou uma resposta semanal vazia.");
+                throw erroFormato(mensagemRespostaVazia);
             }
 
+            logger.info(
+                    "OpenAI concluiu {}: model={}, tempoMs={}",
+                    contexto,
+                    model,
+                    tempoMs(inicio)
+            );
             return content;
         } catch (GerarTreinoIAException exception) {
             throw exception;
         } catch (JsonProcessingException exception) {
             logger.error(
-                    "JSON semanal inválido: class={}, message={}",
+                    "JSON inválido em {}: class={}, message={}",
+                    contexto,
                     exception.getClass().getName(),
                     sanitizar(exception.getMessage())
             );
             throw new GerarTreinoIAException(
                     BAD_GATEWAY,
-                    "A IA retornou um plano semanal em formato inválido. Tente novamente.",
+                    mensagemJsonInvalido,
                     exception
             );
         } catch (RestClientResponseException exception) {
-            throw tratarErroOpenAI(exception);
+            throw tratarErroOpenAI(exception, contexto, mensagemErroOpenAI);
         } catch (RestClientException exception) {
-            logger.warn("Falha de conexão com a OpenAI no plano semanal: {}",
-                    sanitizar(exception.getMessage()));
+            logger.warn(
+                    "Falha de conexão com a OpenAI em {}: {}",
+                    contexto,
+                    sanitizar(exception.getMessage())
+            );
             throw new GerarTreinoIAException(
                     SERVICE_UNAVAILABLE,
                     "O Coach IA está temporariamente indisponível. Tente novamente.",
@@ -103,24 +149,27 @@ public class OpenAIService {
             );
         } catch (Exception exception) {
             logger.error(
-                    "Erro inesperado no plano semanal: class={}, message={}",
+                    "Erro inesperado em {}: class={}, message={}",
+                    contexto,
                     exception.getClass().getName(),
                     sanitizar(exception.getMessage())
             );
             throw new GerarTreinoIAException(
                     BAD_GATEWAY,
-                    "Não foi possível processar o plano semanal. Tente novamente.",
+                    mensagemErroInesperado,
                     exception
             );
         }
     }
 
     private GerarTreinoIAException tratarErroOpenAI(
-            RestClientResponseException exception) {
+            RestClientResponseException exception,
+            String contexto,
+            String mensagemErroOpenAI) {
         int status = exception.getStatusCode().value();
         logger.warn(
-                "OpenAI recusou plano semanal: status={}, model={}, body={}",
-                status, model, sanitizar(exception.getResponseBodyAsString())
+                "OpenAI recusou {}: status={}, model={}, body={}",
+                contexto, status, model, sanitizar(exception.getResponseBodyAsString())
         );
         return switch (status) {
             case 401 -> new GerarTreinoIAException(
@@ -131,7 +180,7 @@ public class OpenAIService {
                     "O Coach IA atingiu o limite de uso ou a cota disponível.", exception);
             default -> new GerarTreinoIAException(
                     BAD_GATEWAY,
-                    "A OpenAI não conseguiu gerar o plano semanal agora.", exception);
+                    mensagemErroOpenAI, exception);
         };
     }
 
@@ -150,10 +199,14 @@ public class OpenAIService {
     }
 
     private GerarTreinoIAException erroFormato(String detalhe) {
-        logger.warn("Plano semanal rejeitado: {}", detalhe);
+        logger.warn("Resposta da IA rejeitada: {}", detalhe);
         return new GerarTreinoIAException(
                 BAD_GATEWAY,
                 detalhe + " Tente gerar novamente.");
+    }
+
+    private long tempoMs(long inicio) {
+        return (System.nanoTime() - inicio) / 1_000_000;
     }
 
     private String sanitizar(String valor) {
