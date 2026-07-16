@@ -1,18 +1,26 @@
 package com.kaio.runtracker.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
+import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class GerarPlanoTreinoIAServiceTest {
 
@@ -159,6 +167,42 @@ class GerarPlanoTreinoIAServiceTest {
         assertEquals("A data da prova não pode estar no passado.", exception.getMessage());
     }
 
+    @Test
+    void tentaGerarNovamenteQuandoPlanoNaoContemCorridaEmTodosOsDiasEscolhidos() {
+        OpenAIService openAIService = mock(OpenAIService.class);
+        GerarPlanoTreinoIAService serviceComMock =
+                new GerarPlanoTreinoIAService(
+                        new PlanoTreinoPromptBuilder(),
+                        openAIService,
+                        new PlanoTreinoRespostaParser(new ObjectMapper()),
+                        Clock.fixed(
+                                Instant.parse("2026-07-14T12:00:00Z"),
+                                ZoneId.of("America/Sao_Paulo")
+                        )
+                );
+        GerarPlanoTreinoRequestDTO request = requestSemProva(4);
+        request.setDiasDisponiveis(List.of(
+                "Segunda-feira",
+                "Quarta-feira",
+                "Sexta-feira",
+                "Sábado"
+        ));
+
+        when(openAIService.enviarPromptPlanoTreino(anyString(), anyString(), eq(4)))
+                .thenReturn(
+                        planoJson(treinosSemSexta()),
+                        planoJson(treinosComQuatroDias())
+                );
+
+        PlanoTreinoIAResponseDTO plano = serviceComMock.gerarPlano(request);
+
+        assertEquals(4, plano.getSemanas().size());
+        assertEquals(7, plano.getSemanas().get(0).getTreinos().size());
+        assertEquals("Corrida sexta", plano.getSemanas().get(0).getTreinos().get(4).getTitulo());
+        verify(openAIService, times(2))
+                .enviarPromptPlanoTreino(anyString(), anyString(), eq(4));
+    }
+
     private GerarPlanoTreinoRequestDTO requestSemProva(Integer duracaoSemanas) {
         GerarPlanoTreinoRequestDTO request = baseRequest();
         request.setPossuiProva(false);
@@ -184,5 +228,71 @@ class GerarPlanoTreinoIAServiceTest {
         request.setDistanciaAlvo("10 km");
         request.setPossuiLesao(false);
         return request;
+    }
+
+    private String planoJson(String treinos) {
+        return """
+                {
+                  "titulo": "Plano completo",
+                  "resumo": "Resumo",
+                  "duracaoSemanas": 4,
+                  "objetivoPlano": "Objetivo",
+                  "semanas": [
+                    %s,
+                    %s,
+                    %s,
+                    %s
+                  ]
+                }
+                """.formatted(
+                semanaJson(1, treinos),
+                semanaJson(2, treinos),
+                semanaJson(3, treinos),
+                semanaJson(4, treinos)
+        );
+    }
+
+    private String semanaJson(int numeroSemana, String treinos) {
+        return """
+                {
+                  "numeroSemana": %d,
+                  "titulo": "Semana %d",
+                  "foco": "Base",
+                  "treinos": [%s]
+                }
+                """.formatted(numeroSemana, numeroSemana, treinos);
+    }
+
+    private String treinosSemSexta() {
+        return treinoJson("segunda-feira", "Corrida segunda")
+                + ","
+                + treinoJson("quarta-feira", "Corrida quarta")
+                + ","
+                + treinoJson("sábado", "Corrida sábado");
+    }
+
+    private String treinosComQuatroDias() {
+        return treinoJson("segunda-feira", "Corrida segunda")
+                + ","
+                + treinoJson("quarta-feira", "Corrida quarta")
+                + ","
+                + treinoJson("sexta-feira", "Corrida sexta")
+                + ","
+                + treinoJson("sábado", "Corrida sábado");
+    }
+
+    private String treinoJson(String diaSemana, String titulo) {
+        return """
+                {
+                  "diaSemana": "%s",
+                  "titulo": "%s",
+                  "tipo": "Corrida",
+                  "descricao": "Treino de corrida",
+                  "distanciaKm": "5 km",
+                  "duracaoEstimada": "30 minutos",
+                  "paceSugerido": "6:00 min/km",
+                  "observacoes": "Manter confortavel"
+                }
+                """.formatted(diaSemana, titulo);
     }
 }

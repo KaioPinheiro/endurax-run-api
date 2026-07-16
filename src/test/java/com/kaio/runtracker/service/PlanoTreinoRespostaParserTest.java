@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -117,6 +119,70 @@ class PlanoTreinoRespostaParserTest {
         assertEquals("Descanso", plano.getSemanas().get(0).getTreinos().get(6).getTipo());
     }
 
+    @Test
+    void respostaComDiaDisponivelSemCorridaRejeitaPlano() {
+        String treinos = treinoJson("segunda-feira", "Segunda")
+                + ","
+                + descansoJson("quarta-feira");
+
+        GerarTreinoIAException exception = assertThrows(
+                GerarTreinoIAException.class,
+                () -> parser.parsePlanoTreino(
+                        planoJson(semanaJson(1, treinos)),
+                        1,
+                        List.of("segunda-feira", "quarta-feira")
+                )
+        );
+
+        assertEquals("502 BAD_GATEWAY", exception.getStatus().toString());
+        assertEquals(
+                "A IA retornou menos treinos de corrida do que os dias escolhidos. Tente gerar novamente.",
+                exception.getMessage()
+        );
+    }
+
+    @Test
+    void respostaComCorridaEmDiaNaoSelecionadoRejeitaPlano() {
+        String treinos = treinoJson("segunda-feira", "Segunda")
+                + ","
+                + treinoJson("domingo", "Domingo");
+
+        GerarTreinoIAException exception = assertThrows(
+                GerarTreinoIAException.class,
+                () -> parser.parsePlanoTreino(
+                        planoJson(semanaJson(1, treinos)),
+                        1,
+                        List.of("segunda-feira")
+                )
+        );
+
+        assertEquals("502 BAD_GATEWAY", exception.getStatus().toString());
+        assertEquals(
+                "A IA retornou corrida em dia nao selecionado. Tente gerar novamente.",
+                exception.getMessage()
+        );
+    }
+
+    @Test
+    void aceitaDiasDisponiveisComAbreviacoes() {
+        String treinos = treinoJson("segunda-feira", "Segunda")
+                + ","
+                + treinoJson("quarta-feira", "Quarta")
+                + ","
+                + treinoJson("sexta-feira", "Sexta")
+                + ","
+                + treinoJson("sábado", "Sabado");
+
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treinos)),
+                1,
+                List.of("SEG", "QUA", "SEX", "SÁB")
+        );
+
+        assertEquals(7, plano.getSemanas().get(0).getTreinos().size());
+        assertEquals("Sexta", plano.getSemanas().get(0).getTreinos().get(4).getTitulo());
+    }
+
     private String planoJson(String semanas) {
         return """
                 {
@@ -169,5 +235,20 @@ class PlanoTreinoRespostaParserTest {
                   "observacoes": "Manter confortavel"
                 }
                 """.formatted(diaSemana, titulo);
+    }
+
+    private String descansoJson(String diaSemana) {
+        return """
+                {
+                  "diaSemana": "%s",
+                  "titulo": "Descanso",
+                  "tipo": "Descanso",
+                  "descricao": "Recuperacao",
+                  "distanciaKm": "0 km",
+                  "duracaoEstimada": "Livre",
+                  "paceSugerido": "Nao se aplica",
+                  "observacoes": "Recuperar"
+                }
+                """.formatted(diaSemana);
     }
 }

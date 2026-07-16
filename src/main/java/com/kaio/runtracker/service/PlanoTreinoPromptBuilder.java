@@ -11,52 +11,39 @@ public class PlanoTreinoPromptBuilder {
 
     public String criarSystemPrompt() {
         return """
-                Você é o RunPace Coach, um assistente especializado em corrida de rua,
-                periodização de ciclos completos, recuperação e evolução de performance.
-                Gere planos seguros, claros e objetivos. Não substitua orientação médica.
-                Caso o usuário informe lesão, dor importante ou limitação, priorize treinos
-                leves, descanso ou avaliação profissional.
+                Voce e o RunPace Coach, especialista em corrida de rua.
+                Gere planos seguros, objetivos e em JSON valido. Nao substitua orientacao medica.
                 """;
     }
 
     public String criarPrompt(GerarPlanoTreinoRequestDTO request, int duracaoSemanas) {
         return """
-                Crie um plano completo de corrida com duração de %d semana(s).
+                Gere um plano completo de corrida com exatamente %d semana(s).
 
-                Dados do atleta:
-                Objetivo: %s
-                Experiência na corrida: %s
-                Volume semanal atual: %s
-                Ritmo confortável atual: %s
-                Distância alvo: %s
-                Dias disponíveis para treinar: %s
-                Possui prova marcada: %s
-                Data atual: %s
-                Data da prova: %s
-                Distância da prova: %s
-                Objetivo da prova: %s
-                Tempo desejado: %s
-                Importância da prova: %s
-                Possui lesão: %s
-                Observações: %s
+                Regras fixas:
+                - Cada semana deve ter exatamente 7 treinos, de segunda-feira a domingo, nessa ordem.
+                - Use corrida somente nos dias disponiveis informados.
+                - Todos os dias disponiveis informados devem receber treino de corrida em todas as semanas.
+                - A quantidade de treinos de corrida por semana deve ser exatamente igual a quantidade de dias disponiveis informados.
+                - Nos demais dias, use descanso, mobilidade, recuperacao ativa ou fortalecimento leve.
+                - Nunca use descanso, mobilidade, recuperacao ativa ou fortalecimento nos dias disponiveis informados.
+                - Nunca programe corrida, prova ou competicao em dias nao selecionados como disponiveis.
+                - Progrida de forma coerente e evite aumento brusco de volume.
+                - Ajuste intensidade, volume e complexidade ao perfil, objetivo, ritmo, lesoes e observacoes.
+                - Retorne apenas JSON valido, sem markdown.
 
-                Regras principais:
-                - Gere um ciclo completo, nunca apenas um treino isolado.
-                - Gere exatamente %d semana(s), cada uma com foco claro.
-                - Cada semana deve conter exatamente 7 treinos, um para cada dia: segunda-feira, terça-feira, quarta-feira, quinta-feira, sexta-feira, sábado e domingo.
-                - Ordene os dias de segunda-feira a domingo.
-                - Coloque treinos de corrida somente nos dias disponíveis selecionados.
-                - Nos dias não selecionados, use descanso, mobilidade, recuperação ativa ou fortalecimento leve.
-                - Nunca programe corrida em um dia não selecionado.
-                - Inclua descanso e recuperação de forma coerente.
-                - Evite aumentos bruscos de volume e não aumente o volume semanal em mais de aproximadamente 10%% quando houver progressão.
-                - Ajuste intensidade, volume e complexidade à experiência, volume atual, ritmo, objetivo, lesões e observações.
-                - Retorne somente JSON válido, sem markdown.
+                Regras de texto:
+                - resumo: no maximo 3 frases.
+                - foco: 1 frase.
+                - descricao: 1 frase curta.
+                - observacoes: 1 frase curta.
+                - Nao repita distancia, pace ou duracao na descricao quando esses dados ja estiverem nos campos proprios.
+                - Descanso e fortalecimento devem usar textos curtos e padronizados.
 
-                Orientação do ciclo:
+                Orientacao do ciclo:
                 %s
 
-                Formato obrigatório:
+                JSON obrigatorio:
                 {
                   "titulo": "",
                   "resumo": "",
@@ -82,7 +69,26 @@ public class PlanoTreinoPromptBuilder {
                     }
                   ]
                 }
+
+                Dados do atleta:
+                - Objetivo: %s
+                - Experiencia: %s
+                - Volume semanal atual: %s
+                - Ritmo confortavel atual: %s
+                - Distancia alvo: %s
+                - Dias disponiveis: %s
+                - Possui prova marcada: %s
+                - Data atual: %s
+                - Data da prova: %s
+                - Distancia da prova: %s
+                - Objetivo da prova: %s
+                - Tempo desejado: %s
+                - Importancia da prova: %s
+                - Possui lesao: %s
+                - Observacoes: %s
                 """.formatted(
+                duracaoSemanas,
+                orientacaoCiclo(request),
                 duracaoSemanas,
                 request.getObjetivo(),
                 request.getExperienciaCorrida(),
@@ -90,43 +96,35 @@ public class PlanoTreinoPromptBuilder {
                 request.getRitmoConfortavel(),
                 request.getDistanciaAlvo(),
                 request.getDiasDisponiveis(),
-                Boolean.TRUE.equals(request.getPossuiProva()) ? "Sim" : "Não",
+                Boolean.TRUE.equals(request.getPossuiProva()) ? "Sim" : "Nao",
                 LocalDate.now(),
-                request.getDataProva() == null ? "Não informado" : request.getDataProva(),
+                request.getDataProva() == null ? "Nao informado" : request.getDataProva(),
                 valor(request.getDistanciaProva()),
                 valor(request.getObjetivoProva()),
                 valor(request.getTempoDesejado()),
                 valor(request.getImportanciaProva()),
-                Boolean.TRUE.equals(request.getPossuiLesao()) ? "Sim" : "Não",
-                valor(request.getObservacoes()),
-                duracaoSemanas,
-                orientacaoCiclo(request, duracaoSemanas),
-                duracaoSemanas
+                Boolean.TRUE.equals(request.getPossuiLesao()) ? "Sim" : "Nao",
+                valor(request.getObservacoes())
         );
     }
 
-    private String orientacaoCiclo(GerarPlanoTreinoRequestDTO request, int duracaoSemanas) {
+    private String orientacaoCiclo(GerarPlanoTreinoRequestDTO request) {
         if (Boolean.TRUE.equals(request.getPossuiProva())) {
             return """
-                    - Oriente o plano pela prova informada, considerando data, distância, meta e importância.
-                    - O ciclo com prova deve ter no mínimo 4 semanas e no máximo 6 semanas.
-                    - Se a prova estiver próxima, priorize segurança, manutenção, recuperação e taper.
-                    - Se a prova acontecer antes do fim do ciclo, use as semanas até a prova para preparar o atleta e dedique as semanas restantes à recuperação e ao retorno gradual.
-                    - Não prometa evolução irreal quando houver pouco tempo disponível.
-                    - Quando a prova estiver a mais de seis semanas, este é apenas o primeiro ciclo de seis semanas orientado à prova.
-                    - A última semana antes da prova deve ser compatível com a proximidade da prova.
+                    - Oriente o ciclo pela prova informada: data, distancia, meta e importancia.
+                    - O ciclo com prova deve ter no minimo 4 e no maximo 6 semanas.
+                    - Se a prova acontecer antes do fim do ciclo, prepare o atleta ate a prova e use as semanas restantes para recuperacao e retorno gradual.
+                    - Se a prova estiver a mais de 6 semanas, gere apenas o primeiro ciclo orientado a ela.
                     """;
         }
 
         return """
                 - Oriente o ciclo pelo objetivo geral do corredor.
-                - Crie progressão coerente ao longo das semanas.
-                - Defina um foco específico para cada semana.
-                - Como não há prova marcada, não use taper de prova; priorize consistência, base, resistência, técnica ou condicionamento conforme o objetivo.
+                - Nao use taper de prova; priorize consistencia, base, resistencia, tecnica ou condicionamento conforme o objetivo.
                 """;
     }
 
     private String valor(String valor) {
-        return StringUtils.hasText(valor) ? valor.trim() : "Não informado";
+        return StringUtils.hasText(valor) ? valor.trim() : "Nao informado";
     }
 }

@@ -30,6 +30,33 @@ public class PlanoTreinoRespostaParser {
             "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira",
             "sexta-feira", "sábado", "domingo"
     );
+    private static final Map<String, String> ALIASES_DIAS = Map.ofEntries(
+            Map.entry("seg", "segunda-feira"),
+            Map.entry("segunda", "segunda-feira"),
+            Map.entry("segunda feira", "segunda-feira"),
+            Map.entry("segunda-feira", "segunda-feira"),
+            Map.entry("ter", "terça-feira"),
+            Map.entry("terca", "terça-feira"),
+            Map.entry("terca feira", "terça-feira"),
+            Map.entry("terca-feira", "terça-feira"),
+            Map.entry("qua", "quarta-feira"),
+            Map.entry("quarta", "quarta-feira"),
+            Map.entry("quarta feira", "quarta-feira"),
+            Map.entry("quarta-feira", "quarta-feira"),
+            Map.entry("qui", "quinta-feira"),
+            Map.entry("quinta", "quinta-feira"),
+            Map.entry("quinta feira", "quinta-feira"),
+            Map.entry("quinta-feira", "quinta-feira"),
+            Map.entry("sex", "sexta-feira"),
+            Map.entry("sexta", "sexta-feira"),
+            Map.entry("sexta feira", "sexta-feira"),
+            Map.entry("sexta-feira", "sexta-feira"),
+            Map.entry("sab", "sábado"),
+            Map.entry("sabado", "sábado"),
+            Map.entry("sábado", "sábado"),
+            Map.entry("dom", "domingo"),
+            Map.entry("domingo", "domingo")
+    );
 
     private final ObjectMapper objectMapper;
 
@@ -40,10 +67,17 @@ public class PlanoTreinoRespostaParser {
     public PlanoTreinoIAResponseDTO parsePlanoTreino(
             String content,
             int duracaoEsperada) {
+        return parsePlanoTreino(content, duracaoEsperada, List.of());
+    }
+
+    public PlanoTreinoIAResponseDTO parsePlanoTreino(
+            String content,
+            int duracaoEsperada,
+            List<String> diasDisponiveis) {
         try {
             PlanoTreinoIAResponseDTO plano =
                     objectMapper.readValue(content, PlanoTreinoIAResponseDTO.class);
-            normalizarPlano(plano, duracaoEsperada);
+            normalizarPlano(plano, duracaoEsperada, diasDisponiveis);
             return plano;
         } catch (GerarTreinoIAException exception) {
             throw exception;
@@ -61,7 +95,10 @@ public class PlanoTreinoRespostaParser {
         }
     }
 
-    private void normalizarPlano(PlanoTreinoIAResponseDTO plano, int duracaoEsperada) {
+    private void normalizarPlano(
+            PlanoTreinoIAResponseDTO plano,
+            int duracaoEsperada,
+            List<String> diasDisponiveis) {
         if (plano == null) {
             throw erroFormato("A IA retornou um plano vazio.");
         }
@@ -114,7 +151,8 @@ public class PlanoTreinoRespostaParser {
                 semana.setNumeroSemana(numero);
                 semana.setTreinos(normalizarTreinos(
                         semana.getTreinos(),
-                        "semana " + numero
+                        "semana " + numero,
+                        diasDisponiveis
                 ));
             }
             semanasNormalizadas.add(semana);
@@ -140,7 +178,8 @@ public class PlanoTreinoRespostaParser {
 
     private List<TreinoPlanoIAResponseDTO> normalizarTreinos(
             List<TreinoPlanoIAResponseDTO> treinos,
-            String contexto) {
+            String contexto,
+            List<String> diasDisponiveis) {
         Map<String, TreinoPlanoIAResponseDTO> porDia = new LinkedHashMap<>();
         if (treinos != null) {
             for (TreinoPlanoIAResponseDTO treino : treinos) {
@@ -187,12 +226,116 @@ public class PlanoTreinoRespostaParser {
             ordenados.add(treino);
         }
 
+        validarTreinosNosDiasDisponiveis(ordenados, diasDisponiveis, contexto);
+
         logger.info(
                 "Plano completo IA: dias preenchidos em {}={}",
                 contexto,
                 diasPreenchidos
         );
         return ordenados;
+    }
+
+    private void validarTreinosNosDiasDisponiveis(
+            List<TreinoPlanoIAResponseDTO> treinos,
+            List<String> diasDisponiveis,
+            String contexto) {
+        if (diasDisponiveis == null || diasDisponiveis.isEmpty()) {
+            return;
+        }
+
+        List<String> diasDisponiveisNormalizados = diasDisponiveis.stream()
+                .filter(StringUtils::hasText)
+                .map(this::normalizarDia)
+                .distinct()
+                .toList();
+
+        if (diasDisponiveisNormalizados.isEmpty()) {
+            return;
+        }
+
+        long treinosCorridaEmDiasDisponiveis = 0;
+        for (TreinoPlanoIAResponseDTO treino : treinos) {
+            String dia = normalizarDia(treino.getDiaSemana());
+            boolean diaDisponivel = diasDisponiveisNormalizados.contains(dia);
+            boolean treinoCorrida = ehTreinoCorrida(treino);
+
+            if (diaDisponivel && !treinoCorrida) {
+                logger.warn(
+                        "Plano completo IA: dia disponivel sem corrida em {}: {}",
+                        contexto,
+                        treino.getDiaSemana()
+                );
+                throw erroFormato("A IA retornou menos treinos de corrida do que os dias escolhidos.");
+            }
+
+            if (!diaDisponivel && treinoCorrida) {
+                logger.warn(
+                        "Plano completo IA: corrida em dia nao selecionado em {}: {}",
+                        contexto,
+                        treino.getDiaSemana()
+                );
+                throw erroFormato("A IA retornou corrida em dia nao selecionado.");
+            }
+
+            if (diaDisponivel) {
+                treinosCorridaEmDiasDisponiveis++;
+            }
+        }
+
+        if (treinosCorridaEmDiasDisponiveis != diasDisponiveisNormalizados.size()) {
+            throw erroFormato("A IA retornou quantidade de treinos diferente dos dias escolhidos.");
+        }
+    }
+
+    private boolean ehTreinoCorrida(TreinoPlanoIAResponseDTO treino) {
+        String texto = normalizar(String.join(
+                " ",
+                valorTexto(treino.getTipo()),
+                valorTexto(treino.getTitulo()),
+                valorTexto(treino.getDescricao())
+        ));
+
+        if (texto.contains("descanso")
+                || texto.contains("fortalecimento")
+                || texto.contains("mobilidade")
+                || texto.contains("alongamento")
+                || texto.contains("caminhada")) {
+            return false;
+        }
+
+        return temDistanciaValida(treino.getDistanciaKm())
+                || texto.contains("corrida")
+                || texto.contains("rodagem")
+                || texto.contains("longao")
+                || texto.contains("interval")
+                || texto.contains("fartlek")
+                || texto.contains("ritmo")
+                || texto.contains("tempo")
+                || texto.contains("velocidade")
+                || texto.contains("resistencia")
+                || texto.contains("regenerativo")
+                || texto.contains("tiro")
+                || texto.contains("prova")
+                || texto.contains("competicao");
+    }
+
+    private boolean temDistanciaValida(String valor) {
+        if (!StringUtils.hasText(valor)) {
+            return false;
+        }
+
+        String texto = normalizar(valor)
+                .replace(",", ".");
+        if (texto.equals("nao se aplica") || texto.equals("0") || texto.equals("0 km")) {
+            return false;
+        }
+
+        java.util.regex.Matcher distancia =
+                java.util.regex.Pattern.compile("^(\\d+(?:\\.\\d+)?)\\s*(?:km)?$")
+                        .matcher(texto);
+
+        return distancia.matches() && Double.parseDouble(distancia.group(1)) > 0;
     }
 
     private TreinoPlanoIAResponseDTO criarDescanso(String diaSemana) {
@@ -214,6 +357,11 @@ public class PlanoTreinoRespostaParser {
                 .anyMatch(dia -> dia.equals(diaNormalizado));
     }
 
+    private String normalizarDia(String valor) {
+        String diaNormalizado = normalizar(valor);
+        return ALIASES_DIAS.getOrDefault(diaNormalizado, diaNormalizado);
+    }
+
     private GerarTreinoIAException erroFormato(String detalhe) {
         logger.warn("Plano completo rejeitado: {}", detalhe);
         return new GerarTreinoIAException(
@@ -226,6 +374,10 @@ public class PlanoTreinoRespostaParser {
         return Normalizer.normalize(valor.trim(), Normalizer.Form.NFD)
                 .replaceAll("\\p{M}", "")
                 .toLowerCase(Locale.ROOT);
+    }
+
+    private String valorTexto(String valor) {
+        return StringUtils.hasText(valor) ? valor : "";
     }
 
     private String sanitizar(String valor) {

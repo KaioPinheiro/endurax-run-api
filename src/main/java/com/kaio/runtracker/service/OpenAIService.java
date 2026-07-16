@@ -13,6 +13,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -31,15 +32,19 @@ public class OpenAIService {
 
     private final String apiKey;
     private final String model;
+    private final int maxOutputTokens;
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
 
     public OpenAIService(
             @Value("${openai.api.key:}") String apiKey,
             @Value("${openai.model:gpt-4o-mini}") String model,
+            @Value("${openai.max-output-tokens:${OPENAI_MAX_OUTPUT_TOKENS:7000}}")
+            int maxOutputTokens,
             ObjectMapper objectMapper) {
         this.apiKey = apiKey;
         this.model = model;
+        this.maxOutputTokens = maxOutputTokens;
         this.objectMapper = objectMapper;
         this.restClient = RestClient.create();
     }
@@ -49,6 +54,7 @@ public class OpenAIService {
                 systemPrompt,
                 userPrompt,
                 "plano semanal",
+                null,
                 "A IA retornou uma resposta semanal vazia.",
                 "A IA retornou um plano semanal em formato inválido. Tente novamente.",
                 "Não foi possível processar o plano semanal. Tente novamente.",
@@ -57,10 +63,18 @@ public class OpenAIService {
     }
 
     public String enviarPromptPlanoTreino(String systemPrompt, String userPrompt) {
+        return enviarPromptPlanoTreino(systemPrompt, userPrompt, null);
+    }
+
+    public String enviarPromptPlanoTreino(
+            String systemPrompt,
+            String userPrompt,
+            Integer duracaoSemanas) {
         return enviarPrompt(
                 systemPrompt,
                 userPrompt,
                 "plano completo",
+                duracaoSemanas,
                 "A IA retornou uma resposta vazia para o plano completo.",
                 "A IA retornou um plano em formato inválido. Tente novamente.",
                 "Não foi possível processar o plano. Tente novamente.",
@@ -76,20 +90,23 @@ public class OpenAIService {
             String systemPrompt,
             String userPrompt,
             String contexto,
+            Integer duracaoSemanas,
             String mensagemRespostaVazia,
             String mensagemJsonInvalido,
             String mensagemErroInesperado,
             String mensagemErroOpenAI) {
         validarConfiguracao();
 
-        Map<String, Object> body = Map.of(
-                "model", model,
-                "messages", List.of(
-                        Map.of("role", "system", "content", systemPrompt),
-                        Map.of("role", "user", "content", userPrompt)
-                ),
-                "response_format", Map.of("type", "json_object")
-        );
+        Map<String, Object> body = new HashMap<>();
+        body.put("model", model);
+        body.put("messages", List.of(
+                Map.of("role", "system", "content", systemPrompt),
+                Map.of("role", "user", "content", userPrompt)
+        ));
+        body.put("response_format", Map.of("type", "json_object"));
+        if (maxOutputTokens > 0) {
+            body.put("max_tokens", maxOutputTokens);
+        }
 
         long inicio = System.nanoTime();
         try {
@@ -113,11 +130,17 @@ public class OpenAIService {
                 throw erroFormato(mensagemRespostaVazia);
             }
 
+            JsonNode usage = root.path("usage");
             logger.info(
-                    "OpenAI concluiu {}: model={}, tempoMs={}",
+                    "OpenAI concluiu {}: model={}, duracaoSemanas={}, tempoMs={}, promptTokens={}, completionTokens={}, totalTokens={}, maxOutputTokens={}",
                     contexto,
                     model,
-                    tempoMs(inicio)
+                    duracaoSemanas,
+                    tempoMs(inicio),
+                    tokenUsage(usage, "prompt_tokens"),
+                    tokenUsage(usage, "completion_tokens"),
+                    tokenUsage(usage, "total_tokens"),
+                    maxOutputTokens > 0 ? maxOutputTokens : null
             );
             return content;
         } catch (GerarTreinoIAException exception) {
@@ -207,6 +230,14 @@ public class OpenAIService {
 
     private long tempoMs(long inicio) {
         return (System.nanoTime() - inicio) / 1_000_000;
+    }
+
+    private Integer tokenUsage(JsonNode usage, String campo) {
+        if (usage == null || usage.isMissingNode() || usage.isNull()) {
+            return null;
+        }
+        JsonNode valor = usage.path(campo);
+        return valor.isInt() ? valor.asInt() : null;
     }
 
     private String sanitizar(String valor) {

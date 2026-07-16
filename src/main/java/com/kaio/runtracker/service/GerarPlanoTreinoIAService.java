@@ -17,6 +17,7 @@ public class GerarPlanoTreinoIAService {
 
     private static final Logger logger =
             LoggerFactory.getLogger(GerarPlanoTreinoIAService.class);
+    private static final int MAX_TENTATIVAS_GERACAO = 2;
 
     private final PlanoTreinoPromptBuilder promptBuilder;
     private final OpenAIService openAIService;
@@ -43,21 +44,103 @@ public class GerarPlanoTreinoIAService {
     }
 
     public PlanoTreinoIAResponseDTO gerarPlano(GerarPlanoTreinoRequestDTO request) {
-        int duracaoSemanas = calcularDuracaoSemanas(request);
+        long inicioTotal = System.nanoTime();
+        long validacaoMs = 0;
+        long promptMs = 0;
+        long openaiMs = 0;
+        long parserMs = 0;
+        Integer duracaoSemanas = null;
 
-        logger.info(
-                "Gerando plano completo IA: possuiProva={}, duracaoSemanas={}, model={}",
-                Boolean.TRUE.equals(request.getPossuiProva()),
-                duracaoSemanas,
-                openAIService.getModel()
-        );
+        try {
+            long inicioValidacao = System.nanoTime();
+            duracaoSemanas = calcularDuracaoSemanas(request);
+            validacaoMs = tempoMs(inicioValidacao);
 
-        String resposta = openAIService.enviarPromptPlanoTreino(
-                promptBuilder.criarSystemPrompt(),
-                promptBuilder.criarPrompt(request, duracaoSemanas)
-        );
+            logger.info(
+                    "Gerando plano completo IA: possuiProva={}, duracaoSemanas={}, model={}",
+                    Boolean.TRUE.equals(request.getPossuiProva()),
+                    duracaoSemanas,
+                    openAIService.getModel()
+            );
 
-        return respostaParser.parsePlanoTreino(resposta, duracaoSemanas);
+            long inicioPrompt = System.nanoTime();
+            String systemPrompt = promptBuilder.criarSystemPrompt();
+            String userPrompt = promptBuilder.criarPrompt(request, duracaoSemanas);
+            promptMs = tempoMs(inicioPrompt);
+
+            GerarTreinoIAException ultimaFalhaParser = null;
+            for (int tentativa = 1; tentativa <= MAX_TENTATIVAS_GERACAO; tentativa++) {
+                String resposta;
+                long inicioOpenAI = System.nanoTime();
+                try {
+                    resposta = openAIService.enviarPromptPlanoTreino(
+                            systemPrompt,
+                            promptParaTentativa(userPrompt, request, tentativa),
+                            duracaoSemanas
+                    );
+                } finally {
+                    openaiMs += tempoMs(inicioOpenAI);
+                }
+
+                long inicioParser = System.nanoTime();
+                try {
+                    return respostaParser.parsePlanoTreino(
+                            resposta,
+                            duracaoSemanas,
+                            request.getDiasDisponiveis()
+                    );
+                } catch (GerarTreinoIAException exception) {
+                    parserMs += tempoMs(inicioParser);
+                    ultimaFalhaParser = exception;
+                    if (!deveTentarNovamente(exception, tentativa)) {
+                        throw exception;
+                    }
+                    logger.warn(
+                            "Plano completo IA: resposta rejeitada na tentativa {}. Nova tentativa sera feita.",
+                            tentativa
+                    );
+                }
+            }
+
+            throw ultimaFalhaParser;
+        } finally {
+            logger.info(
+                    "Plano completo IA metricas: duracaoSemanas={}, validacaoMs={}, promptMs={}, openaiMs={}, parserMs={}, totalMs={}",
+                    duracaoSemanas,
+                    validacaoMs,
+                    promptMs,
+                    openaiMs,
+                    parserMs,
+                    tempoMs(inicioTotal)
+            );
+        }
+    }
+
+    private String promptParaTentativa(
+            String userPrompt,
+            GerarPlanoTreinoRequestDTO request,
+            int tentativa) {
+        if (tentativa == 1) {
+            return userPrompt;
+        }
+
+        return userPrompt
+                + "\n\nCorrecao obrigatoria antes de responder:"
+                + "\n- Os dias disponiveis escolhidos pelo usuario sao: "
+                + request.getDiasDisponiveis()
+                + "."
+                + "\n- Cada semana deve conter treino de corrida em todos esses dias, sem faltar nenhum."
+                + "\n- Nao retorne corrida em dias que nao estao nessa lista.";
+    }
+
+    private boolean deveTentarNovamente(
+            GerarTreinoIAException exception,
+            int tentativa) {
+        return tentativa < MAX_TENTATIVAS_GERACAO
+                && exception.getStatus() == HttpStatus.BAD_GATEWAY
+                && exception.getMessage() != null
+                && (exception.getMessage().contains("dias escolhidos")
+                || exception.getMessage().contains("dia nao selecionado"));
     }
 
     int calcularDuracaoSemanas(GerarPlanoTreinoRequestDTO request) {
@@ -90,5 +173,9 @@ public class GerarPlanoTreinoIAService {
 
         int semanas = (int) Math.ceil(diasRestantes / 7.0);
         return Math.min(6, Math.max(4, semanas));
+    }
+
+    private long tempoMs(long inicio) {
+        return (System.nanoTime() - inicio) / 1_000_000;
     }
 }
