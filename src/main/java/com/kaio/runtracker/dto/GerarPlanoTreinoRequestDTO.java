@@ -28,6 +28,8 @@ public class GerarPlanoTreinoRequestDTO {
     @NotBlank(message = "O ritmo confortável atual é obrigatório")
     private String ritmoConfortavel;
 
+    private Integer idade;
+
     @NotBlank(message = "A distância alvo é obrigatória")
     private String distanciaAlvo;
 

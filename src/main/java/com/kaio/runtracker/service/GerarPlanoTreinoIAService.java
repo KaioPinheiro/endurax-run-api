@@ -7,10 +7,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
+import java.text.Normalizer;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.Locale;
 
 @Service
 public class GerarPlanoTreinoIAService {
@@ -54,6 +57,10 @@ public class GerarPlanoTreinoIAService {
         try {
             long inicioValidacao = System.nanoTime();
             duracaoSemanas = calcularDuracaoSemanas(request);
+            validarIdadeMinimaParaMaratona(request);
+            validarDiasMinimosParaMaratona(request);
+            validarVolumeSemanalParaMaratona(request);
+            validarExperienciaParaMaratona(request);
             validacaoMs = tempoMs(inicioValidacao);
 
             logger.info(
@@ -173,6 +180,126 @@ public class GerarPlanoTreinoIAService {
 
         int semanas = (int) Math.ceil(diasRestantes / 7.0);
         return Math.min(6, Math.max(4, semanas));
+    }
+
+    void validarDiasMinimosParaMaratona(GerarPlanoTreinoRequestDTO request) {
+        if (!ehPlanoMaratona(request)) {
+            return;
+        }
+
+        long diasDisponiveis = request.getDiasDisponiveis() == null
+                ? 0
+                : request.getDiasDisponiveis().stream()
+                        .filter(StringUtils::hasText)
+                        .map(this::normalizar)
+                        .distinct()
+                        .count();
+
+        if (diasDisponiveis < 4) {
+            throw new GerarTreinoIAException(
+                    HttpStatus.BAD_REQUEST,
+                    "Para plano de maratona, selecione pelo menos 4 dias disponiveis para treinar."
+            );
+        }
+    }
+
+    void validarIdadeMinimaParaMaratona(GerarPlanoTreinoRequestDTO request) {
+        if (!ehPlanoMaratona(request)) {
+            return;
+        }
+
+        if (request.getIdade() == null || request.getIdade() < 18) {
+            throw new GerarTreinoIAException(
+                    HttpStatus.BAD_REQUEST,
+                    "Para plano de maratona, a idade minima e 18 anos."
+            );
+        }
+    }
+
+    void validarVolumeSemanalParaMaratona(GerarPlanoTreinoRequestDTO request) {
+        if (!ehPlanoMaratona(request)) {
+            return;
+        }
+
+        if (!volumeMaratonaPermitido(request.getVolumeSemanalAtual())) {
+            throw new GerarTreinoIAException(
+                    HttpStatus.BAD_REQUEST,
+                    "Para plano de maratona, o volume semanal atual deve ser 40-60 km, 60-80 km ou 80+ km."
+            );
+        }
+    }
+
+    void validarExperienciaParaMaratona(GerarPlanoTreinoRequestDTO request) {
+        if (!ehPlanoMaratona(request)) {
+            return;
+        }
+
+        if (!experienciaMaratonaPermitida(request.getExperienciaCorrida())) {
+            throw new GerarTreinoIAException(
+                    HttpStatus.BAD_REQUEST,
+                    "Para plano de maratona, a experiencia na corrida deve ser a partir de 1 a 3 anos."
+            );
+        }
+    }
+
+    private boolean ehPlanoMaratona(GerarPlanoTreinoRequestDTO request) {
+        return campoIndicaMaratona(request.getObjetivo())
+                || campoIndicaMaratona(request.getDistanciaAlvo())
+                || campoIndicaMaratona(request.getDistanciaProva())
+                || campoIndicaMaratona(request.getObjetivoProva())
+                || campoIndicaMaratona(request.getObservacoes());
+    }
+
+    private boolean campoIndicaMaratona(String valor) {
+        String texto = normalizar(valor);
+        if (!StringUtils.hasText(texto)) {
+            return false;
+        }
+
+        if (texto.matches(".*\\b42\\s*(km|k|quilometros?)\\b.*")) {
+            return true;
+        }
+
+        return texto.contains("maratona")
+                && !texto.contains("meia maratona")
+                && !texto.contains("21 km")
+                && !texto.contains("21k");
+    }
+
+    private boolean volumeMaratonaPermitido(String valor) {
+        String texto = normalizar(valor)
+                .replace("–", "-")
+                .replace("—", "-")
+                .replaceAll("\\s+", "");
+
+        return texto.equals("40-60km")
+                || texto.equals("40a60km")
+                || texto.equals("40ate60km")
+                || texto.equals("60-80km")
+                || texto.equals("60a80km")
+                || texto.equals("60ate80km")
+                || texto.equals("80+km")
+                || texto.equals("80km+");
+    }
+
+    private boolean experienciaMaratonaPermitida(String valor) {
+        String texto = normalizar(valor);
+
+        return texto.contains("1 a 3 anos")
+                || texto.contains("1-3 anos")
+                || texto.contains("mais de 3 anos")
+                || texto.contains("mais que 3 anos")
+                || texto.contains("acima de 3 anos");
+    }
+
+    private String normalizar(String valor) {
+        if (!StringUtils.hasText(valor)) {
+            return "";
+        }
+
+        return Normalizer.normalize(valor.trim(), Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase(Locale.ROOT);
     }
 
     private long tempoMs(long inicio) {
