@@ -1,5 +1,6 @@
 package com.kaio.runtracker.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -35,6 +36,9 @@ public class GerarPlanoTreinoRequestDTO {
 
     @NotEmpty(message = "Selecione pelo menos um dia disponível para treinar")
     private List<String> diasDisponiveis;
+
+    @JsonAlias("longRunDay")
+    private String diaLongao;
 
     @NotNull(message = "Informe se possui uma prova marcada")
     private Boolean possuiProva;

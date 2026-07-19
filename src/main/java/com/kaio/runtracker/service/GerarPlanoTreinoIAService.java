@@ -94,7 +94,9 @@ public class GerarPlanoTreinoIAService {
                     return respostaParser.parsePlanoTreino(
                             resposta,
                             duracaoSemanas,
-                            request.getDiasDisponiveis()
+                            request.getDiasDisponiveis(),
+                            Boolean.TRUE.equals(request.getPossuiProva()),
+                            request.getDiaLongao()
                     );
                 } catch (GerarTreinoIAException exception) {
                     parserMs += tempoMs(inicioParser);
@@ -137,7 +139,15 @@ public class GerarPlanoTreinoIAService {
                 + request.getDiasDisponiveis()
                 + "."
                 + "\n- Cada semana deve conter treino de corrida em todos esses dias, sem faltar nenhum."
-                + "\n- Nao retorne corrida em dias que nao estao nessa lista.";
+                + "\n- Retorne tipos variados e no maximo um treino intervalado por semana."
+                + "\n- Nao inclua educativos em nenhuma sessao."
+                + (StringUtils.hasText(request.getDiaLongao())
+                        ? "\n- O longao deve ser no dia: " + request.getDiaLongao() + "."
+                        : "")
+                + "\n- Nao retorne corrida comum em dias que nao estao nessa lista."
+                + (Boolean.TRUE.equals(request.getPossuiProva())
+                        ? "\n- Se a prova cair fora desses dias, a competicao pode aparecer no dia real da prova."
+                        : "");
     }
 
     private boolean deveTentarNovamente(
@@ -145,9 +155,7 @@ public class GerarPlanoTreinoIAService {
             int tentativa) {
         return tentativa < MAX_TENTATIVAS_GERACAO
                 && exception.getStatus() == HttpStatus.BAD_GATEWAY
-                && exception.getMessage() != null
-                && (exception.getMessage().contains("dias escolhidos")
-                || exception.getMessage().contains("dia nao selecionado"));
+                && exception.getMessage() != null;
     }
 
     int calcularDuracaoSemanas(GerarPlanoTreinoRequestDTO request) {

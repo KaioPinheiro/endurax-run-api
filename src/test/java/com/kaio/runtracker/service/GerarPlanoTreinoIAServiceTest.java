@@ -556,7 +556,7 @@ class GerarPlanoTreinoIAServiceTest {
                   "diaSemana": "%s",
                   "titulo": "%s",
                   "tipo": "Corrida",
-                  "descricao": "Treino de corrida",
+                  "descricao": "Aquecimento: 10 min de trote leve a 6:20 min/km | Principal: 20 min a 6:00 min/km | Desaquecimento: 5 min de caminhada a 6:40 min/km",
                   "distanciaKm": "5 km",
                   "duracaoEstimada": "30 minutos",
                   "paceSugerido": "6:00 min/km",

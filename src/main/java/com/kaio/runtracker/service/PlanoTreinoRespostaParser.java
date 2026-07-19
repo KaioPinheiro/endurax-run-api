@@ -74,10 +74,29 @@ public class PlanoTreinoRespostaParser {
             String content,
             int duracaoEsperada,
             List<String> diasDisponiveis) {
+        return parsePlanoTreino(content, duracaoEsperada, diasDisponiveis, false);
+    }
+
+    public PlanoTreinoIAResponseDTO parsePlanoTreino(
+            String content,
+            int duracaoEsperada,
+            List<String> diasDisponiveis,
+            boolean possuiProva) {
+        return parsePlanoTreino(
+                content, duracaoEsperada, diasDisponiveis, possuiProva, null);
+    }
+
+    public PlanoTreinoIAResponseDTO parsePlanoTreino(
+            String content,
+            int duracaoEsperada,
+            List<String> diasDisponiveis,
+            boolean possuiProva,
+            String diaLongao) {
         try {
             PlanoTreinoIAResponseDTO plano =
                     objectMapper.readValue(content, PlanoTreinoIAResponseDTO.class);
-            normalizarPlano(plano, duracaoEsperada, diasDisponiveis);
+            normalizarPlano(
+                    plano, duracaoEsperada, diasDisponiveis, possuiProva, diaLongao);
             return plano;
         } catch (GerarTreinoIAException exception) {
             throw exception;
@@ -98,7 +117,9 @@ public class PlanoTreinoRespostaParser {
     private void normalizarPlano(
             PlanoTreinoIAResponseDTO plano,
             int duracaoEsperada,
-            List<String> diasDisponiveis) {
+            List<String> diasDisponiveis,
+            boolean possuiProva,
+            String diaLongao) {
         if (plano == null) {
             throw erroFormato("A IA retornou um plano vazio.");
         }
@@ -152,7 +173,9 @@ public class PlanoTreinoRespostaParser {
                 semana.setTreinos(normalizarTreinos(
                         semana.getTreinos(),
                         "semana " + numero,
-                        diasDisponiveis
+                        diasDisponiveis,
+                        possuiProva,
+                        diaLongao
                 ));
             }
             semanasNormalizadas.add(semana);
@@ -179,7 +202,9 @@ public class PlanoTreinoRespostaParser {
     private List<TreinoPlanoIAResponseDTO> normalizarTreinos(
             List<TreinoPlanoIAResponseDTO> treinos,
             String contexto,
-            List<String> diasDisponiveis) {
+            List<String> diasDisponiveis,
+            boolean possuiProva,
+            String diaLongao) {
         Map<String, TreinoPlanoIAResponseDTO> porDia = new LinkedHashMap<>();
         if (treinos != null) {
             for (TreinoPlanoIAResponseDTO treino : treinos) {
@@ -226,7 +251,8 @@ public class PlanoTreinoRespostaParser {
             ordenados.add(treino);
         }
 
-        validarTreinosNosDiasDisponiveis(ordenados, diasDisponiveis, contexto);
+        validarTreinosNosDiasDisponiveis(
+                ordenados, diasDisponiveis, contexto, possuiProva, diaLongao);
 
         logger.info(
                 "Plano completo IA: dias preenchidos em {}={}",
@@ -239,7 +265,9 @@ public class PlanoTreinoRespostaParser {
     private void validarTreinosNosDiasDisponiveis(
             List<TreinoPlanoIAResponseDTO> treinos,
             List<String> diasDisponiveis,
-            String contexto) {
+            String contexto,
+            boolean possuiProva,
+            String diaLongao) {
         if (diasDisponiveis == null || diasDisponiveis.isEmpty()) {
             return;
         }
@@ -254,13 +282,31 @@ public class PlanoTreinoRespostaParser {
             return;
         }
 
+        boolean provaForaDosDiasDisponiveis = possuiProva && treinos.stream()
+                .anyMatch(treino -> {
+                    String dia = normalizarDia(treino.getDiaSemana());
+                    boolean diaDisponivel = diasDisponiveisNormalizados.contains(dia);
+                    return !diaDisponivel
+                            && ehTreinoCorrida(treino)
+                            && ehProvaOuCompeticao(treino);
+                });
+        boolean diaDisponivelSemCorridaCompensadoPorProva = false;
         long treinosCorridaEmDiasDisponiveis = 0;
         for (TreinoPlanoIAResponseDTO treino : treinos) {
             String dia = normalizarDia(treino.getDiaSemana());
             boolean diaDisponivel = diasDisponiveisNormalizados.contains(dia);
             boolean treinoCorrida = ehTreinoCorrida(treino);
+            boolean provaOuCompeticao = ehProvaOuCompeticao(treino);
+
+            if (treinoCorrida && !provaOuCompeticao) {
+                validarEstruturaSessao(treino, contexto);
+            }
 
             if (diaDisponivel && !treinoCorrida) {
+                if (provaForaDosDiasDisponiveis && !diaDisponivelSemCorridaCompensadoPorProva) {
+                    diaDisponivelSemCorridaCompensadoPorProva = true;
+                    continue;
+                }
                 logger.warn(
                         "Plano completo IA: dia disponivel sem corrida em {}: {}",
                         contexto,
@@ -270,6 +316,9 @@ public class PlanoTreinoRespostaParser {
             }
 
             if (!diaDisponivel && treinoCorrida) {
+                if (possuiProva && provaOuCompeticao) {
+                    continue;
+                }
                 logger.warn(
                         "Plano completo IA: corrida em dia nao selecionado em {}: {}",
                         contexto,
@@ -283,12 +332,144 @@ public class PlanoTreinoRespostaParser {
             }
         }
 
-        if (treinosCorridaEmDiasDisponiveis != diasDisponiveisNormalizados.size()) {
+        long quantidadeEsperada = diasDisponiveisNormalizados.size();
+        if (provaForaDosDiasDisponiveis) {
+            quantidadeEsperada -= 1;
+        }
+
+        if (treinosCorridaEmDiasDisponiveis < quantidadeEsperada) {
             throw erroFormato("A IA retornou quantidade de treinos diferente dos dias escolhidos.");
+        }
+
+        validarVariedadeTreinos(treinos, contexto, diaLongao);
+    }
+
+    private void validarVariedadeTreinos(
+            List<TreinoPlanoIAResponseDTO> treinos,
+            String contexto,
+            String diaLongao) {
+        List<TreinoPlanoIAResponseDTO> corridas = treinos.stream()
+                .filter(this::ehTreinoCorrida)
+                .filter(treino -> !ehProvaOuCompeticao(treino))
+                .toList();
+
+        long intervalados = corridas.stream().filter(this::ehIntervalado).count();
+        if (intervalados > 1) {
+            logger.warn("Plano completo IA: excesso de intervalados em {}: {}", contexto, intervalados);
+            throw erroFormato("A IA retornou mais de um treino intervalado na mesma semana.");
+        }
+
+        boolean possuiEducativos = corridas.stream()
+                .map(this::textoCompleto)
+                .anyMatch(texto -> texto.contains("educativo"));
+        if (possuiEducativos) {
+            throw erroFormato("A IA retornou educativos, que não foram solicitados.");
+        }
+
+        if (StringUtils.hasText(diaLongao)) {
+            String diaLongaoNormalizado = normalizarDia(diaLongao);
+            boolean longaoNoDiaEscolhido = corridas.stream()
+                    .anyMatch(treino -> normalizarDia(treino.getDiaSemana())
+                            .equals(diaLongaoNormalizado) && ehLongao(treino));
+            if (!longaoNoDiaEscolhido) {
+                throw erroFormato("A IA não colocou o longão no dia escolhido.");
+            }
         }
     }
 
+    private boolean ehIntervalado(TreinoPlanoIAResponseDTO treino) {
+        String texto = textoCompleto(treino);
+        return texto.contains("interval")
+                || texto.contains("tiro")
+                || texto.contains("velocidade");
+    }
+
+    private boolean ehLongao(TreinoPlanoIAResponseDTO treino) {
+        String texto = textoCompleto(treino);
+        return texto.contains("longao") || texto.contains("corrida longa");
+    }
+
+    private String textoCompleto(TreinoPlanoIAResponseDTO treino) {
+        return normalizar(String.join(
+                " ",
+                valorTexto(treino.getTipo()),
+                valorTexto(treino.getTitulo()),
+                valorTexto(treino.getDescricao()),
+                valorTexto(treino.getObservacoes())
+        ));
+    }
+
+    private void validarEstruturaSessao(
+            TreinoPlanoIAResponseDTO treino,
+            String contexto) {
+        String descricao = normalizar(valorTexto(treino.getDescricao()));
+        boolean possuiEtapas = descricao.contains("aquecimento:")
+                && descricao.contains("principal:")
+                && descricao.contains("desaquecimento:");
+        boolean possuiValorNumerico = descricao.matches(".*\\d+.*");
+        boolean possuiPaceNoAquecimento = trechoEntre(
+                descricao,
+                "aquecimento:",
+                "principal:"
+        ).contains("min/km");
+        boolean possuiPaceNoDesaquecimento = trechoApos(
+                descricao,
+                "desaquecimento:"
+        ).contains("min/km");
+
+        if (!possuiEtapas
+                || !possuiValorNumerico
+                || !possuiPaceNoAquecimento
+                || !possuiPaceNoDesaquecimento) {
+            logger.warn(
+                    "Plano completo IA: sessão sem detalhamento em {}: dia={}",
+                    contexto,
+                    treino.getDiaSemana()
+            );
+            throw erroFormato(
+                    "A IA retornou treino sem aquecimento, bloco principal e desaquecimento detalhados com pace."
+            );
+        }
+    }
+
+    private String trechoEntre(String texto, String inicio, String fim) {
+        int indiceInicio = texto.indexOf(inicio);
+        int indiceFim = texto.indexOf(fim);
+        if (indiceInicio < 0 || indiceFim <= indiceInicio) {
+            return "";
+        }
+        return texto.substring(indiceInicio + inicio.length(), indiceFim);
+    }
+
+    private String trechoApos(String texto, String inicio) {
+        int indiceInicio = texto.indexOf(inicio);
+        if (indiceInicio < 0) {
+            return "";
+        }
+        return texto.substring(indiceInicio + inicio.length());
+    }
+
+    private boolean ehProvaOuCompeticao(TreinoPlanoIAResponseDTO treino) {
+        String texto = normalizar(String.join(
+                " ",
+                valorTexto(treino.getTipo()),
+                valorTexto(treino.getTitulo()),
+                valorTexto(treino.getDescricao()),
+                valorTexto(treino.getObservacoes())
+        ));
+
+        return texto.contains("prova")
+                || texto.contains("competicao")
+                || texto.contains("corrida alvo")
+                || texto.contains("dia da prova");
+    }
+
     private boolean ehTreinoCorrida(TreinoPlanoIAResponseDTO treino) {
+        String categoria = normalizar(String.join(
+                " ",
+                valorTexto(treino.getTipo()),
+                valorTexto(treino.getTitulo())
+        ));
         String texto = normalizar(String.join(
                 " ",
                 valorTexto(treino.getTipo()),
@@ -296,11 +477,11 @@ public class PlanoTreinoRespostaParser {
                 valorTexto(treino.getDescricao())
         ));
 
-        if (texto.contains("descanso")
-                || texto.contains("fortalecimento")
-                || texto.contains("mobilidade")
-                || texto.contains("alongamento")
-                || texto.contains("caminhada")) {
+        if (categoria.contains("descanso")
+                || categoria.contains("fortalecimento")
+                || categoria.contains("mobilidade")
+                || categoria.contains("alongamento")
+                || categoria.contains("caminhada")) {
             return false;
         }
 
