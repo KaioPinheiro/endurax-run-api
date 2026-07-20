@@ -1,5 +1,7 @@
 package com.kaio.runtracker.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
 import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
 import org.slf4j.Logger;
@@ -14,6 +16,9 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Locale;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class GerarPlanoTreinoIAService {
@@ -26,9 +31,18 @@ public class GerarPlanoTreinoIAService {
     private final OpenAIService openAIService;
     private final PlanoTreinoRespostaParser respostaParser;
     private final Clock clock;
+    private final ObjectMapper objectMapper;
 
     @Autowired
     public GerarPlanoTreinoIAService(
+            PlanoTreinoPromptBuilder promptBuilder,
+            OpenAIService openAIService,
+            PlanoTreinoRespostaParser respostaParser,
+            ObjectMapper objectMapper) {
+        this(promptBuilder, openAIService, respostaParser, Clock.systemDefaultZone(), objectMapper);
+    }
+
+    GerarPlanoTreinoIAService(
             PlanoTreinoPromptBuilder promptBuilder,
             OpenAIService openAIService,
             PlanoTreinoRespostaParser respostaParser) {
@@ -40,13 +54,30 @@ public class GerarPlanoTreinoIAService {
             OpenAIService openAIService,
             PlanoTreinoRespostaParser respostaParser,
             Clock clock) {
+        this(
+                promptBuilder,
+                openAIService,
+                respostaParser,
+                clock,
+                new ObjectMapper().findAndRegisterModules()
+        );
+    }
+
+    GerarPlanoTreinoIAService(
+            PlanoTreinoPromptBuilder promptBuilder,
+            OpenAIService openAIService,
+            PlanoTreinoRespostaParser respostaParser,
+            Clock clock,
+            ObjectMapper objectMapper) {
         this.promptBuilder = promptBuilder;
         this.openAIService = openAIService;
         this.respostaParser = respostaParser;
         this.clock = clock;
+        this.objectMapper = objectMapper;
     }
 
     public PlanoTreinoIAResponseDTO gerarPlano(GerarPlanoTreinoRequestDTO request) {
+        String geracaoId = UUID.randomUUID().toString().substring(0, 8);
         long inicioTotal = System.nanoTime();
         long validacaoMs = 0;
         long promptMs = 0;
@@ -55,6 +86,8 @@ public class GerarPlanoTreinoIAService {
         Integer duracaoSemanas = null;
 
         try {
+            logger.info("Request: geracaoId={}\n{}", geracaoId, jsonLog(requestParaLog(request)));
+
             long inicioValidacao = System.nanoTime();
             duracaoSemanas = calcularDuracaoSemanas(request);
             validarIdadeMinimaParaMaratona(request);
@@ -64,19 +97,30 @@ public class GerarPlanoTreinoIAService {
             validacaoMs = tempoMs(inicioValidacao);
 
             logger.info(
-                    "Gerando plano completo IA: possuiProva={}, duracaoSemanas={}, model={}",
+                    "Plano IA validado: geracaoId={}, possuiProva={}, duracaoSemanas={}, model={}, validacaoMs={}",
+                    geracaoId,
                     Boolean.TRUE.equals(request.getPossuiProva()),
                     duracaoSemanas,
-                    openAIService.getModel()
+                    openAIService.getModel(),
+                    validacaoMs
             );
 
             long inicioPrompt = System.nanoTime();
             String systemPrompt = promptBuilder.criarSystemPrompt();
             String userPrompt = promptBuilder.criarPrompt(request, duracaoSemanas);
             promptMs = tempoMs(inicioPrompt);
+            logger.debug(
+                    "Prompt do plano preparado: geracaoId={}, systemPromptChars={}, userPromptChars={}, promptMs={}",
+                    geracaoId, systemPrompt.length(), userPrompt.length(), promptMs
+            );
 
             GerarTreinoIAException ultimaFalhaParser = null;
             for (int tentativa = 1; tentativa <= MAX_TENTATIVAS_GERACAO; tentativa++) {
+                logger.info(
+                        "Enviando plano para OpenAI: geracaoId={}, tentativa={}/{}, duracaoSemanas={}, diasDisponiveis={}",
+                        geracaoId, tentativa, MAX_TENTATIVAS_GERACAO,
+                        duracaoSemanas, request.getDiasDisponiveis()
+                );
                 String resposta;
                 long inicioOpenAI = System.nanoTime();
                 try {
@@ -89,15 +133,34 @@ public class GerarPlanoTreinoIAService {
                     openaiMs += tempoMs(inicioOpenAI);
                 }
 
+                logger.info(
+                        "Resposta da OpenAI recebida: geracaoId={}, tentativa={}/{}, respostaChars={}",
+                        geracaoId, tentativa, MAX_TENTATIVAS_GERACAO,
+                        resposta == null ? 0 : resposta.length()
+                );
+
                 long inicioParser = System.nanoTime();
                 try {
-                    return respostaParser.parsePlanoTreino(
+                    PlanoTreinoIAResponseDTO plano = respostaParser.parsePlanoTreino(
                             resposta,
                             duracaoSemanas,
                             request.getDiasDisponiveis(),
                             Boolean.TRUE.equals(request.getPossuiProva()),
                             request.getDiaLongao()
                     );
+                    parserMs += tempoMs(inicioParser);
+                    logger.info("Response: geracaoId={}\n{}", geracaoId, jsonLog(plano));
+                    logger.info(
+                            "Plano IA gerado com sucesso: geracaoId={}, tentativa={}, semanas={}, treinos={}, possuiAlerta={}, parserMs={}, totalMs={}",
+                            geracaoId,
+                            tentativa,
+                            quantidadeSemanas(plano),
+                            quantidadeTreinos(plano),
+                            StringUtils.hasText(plano.getAlerta()),
+                            parserMs,
+                            tempoMs(inicioTotal)
+                    );
+                    return plano;
                 } catch (GerarTreinoIAException exception) {
                     parserMs += tempoMs(inicioParser);
                     ultimaFalhaParser = exception;
@@ -105,16 +168,32 @@ public class GerarPlanoTreinoIAService {
                         throw exception;
                     }
                     logger.warn(
-                            "Plano completo IA: resposta rejeitada na tentativa {}. Nova tentativa sera feita.",
-                            tentativa
+                            "Plano IA rejeitado: geracaoId={}, tentativa={}/{}, status={}, motivo={}. Nova tentativa sera feita.",
+                            geracaoId, tentativa, MAX_TENTATIVAS_GERACAO,
+                            exception.getStatus(), valorLog(exception.getMessage())
                     );
                 }
             }
 
             throw ultimaFalhaParser;
+        } catch (GerarTreinoIAException exception) {
+            logger.warn(
+                    "Falha ao gerar plano IA: geracaoId={}, status={}, motivo={}, totalMs={}",
+                    geracaoId, exception.getStatus(), valorLog(exception.getMessage()),
+                    tempoMs(inicioTotal)
+            );
+            throw exception;
+        } catch (RuntimeException exception) {
+            logger.error(
+                    "Erro inesperado ao gerar plano IA: geracaoId={}, classe={}, motivo={}, totalMs={}",
+                    geracaoId, exception.getClass().getSimpleName(),
+                    valorLog(exception.getMessage()), tempoMs(inicioTotal), exception
+            );
+            throw exception;
         } finally {
             logger.info(
-                    "Plano completo IA metricas: duracaoSemanas={}, validacaoMs={}, promptMs={}, openaiMs={}, parserMs={}, totalMs={}",
+                    "Plano IA metricas finais: geracaoId={}, duracaoSemanas={}, validacaoMs={}, promptMs={}, openaiMs={}, parserMs={}, totalMs={}",
+                    geracaoId,
                     duracaoSemanas,
                     validacaoMs,
                     promptMs,
@@ -123,6 +202,65 @@ public class GerarPlanoTreinoIAService {
                     tempoMs(inicioTotal)
             );
         }
+    }
+
+    private int quantidadeSemanas(PlanoTreinoIAResponseDTO plano) {
+        return plano.getSemanas() == null ? 0 : plano.getSemanas().size();
+    }
+
+    private int quantidadeTreinos(PlanoTreinoIAResponseDTO plano) {
+        if (plano.getSemanas() == null) {
+            return 0;
+        }
+        return plano.getSemanas().stream()
+                .filter(semana -> semana.getTreinos() != null)
+                .mapToInt(semana -> semana.getTreinos().size())
+                .sum();
+    }
+
+    private String valorLog(String valor) {
+        if (!StringUtils.hasText(valor)) {
+            return "<nao informado>";
+        }
+        String seguro = valor.replaceAll("[\\r\\n\\t]+", " ").trim();
+        return seguro.length() > 300
+                ? seguro.substring(0, 300) + "... [truncado]"
+                : seguro;
+    }
+
+    private String jsonLog(Object valor) {
+        try {
+            return objectMapper.writerWithDefaultPrettyPrinter()
+                    .writeValueAsString(valor);
+        } catch (JsonProcessingException exception) {
+            logger.warn(
+                    "Nao foi possivel serializar objeto para log JSON: classe={}, motivo={}",
+                    valor == null ? "null" : valor.getClass().getSimpleName(),
+                    valorLog(exception.getMessage())
+            );
+            return "<json indisponivel>";
+        }
+    }
+
+    private Map<String, Object> requestParaLog(GerarPlanoTreinoRequestDTO request) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("idade", request.getIdade());
+        payload.put("objetivo", request.getObjetivo());
+        payload.put("experienciaCorrida", request.getExperienciaCorrida());
+        payload.put("volumeSemanalAtual", request.getVolumeSemanalAtual());
+        payload.put("ritmoConfortavel", request.getRitmoConfortavel());
+        payload.put("distanciaAlvo", request.getDistanciaAlvo());
+        payload.put("diasDisponiveis", request.getDiasDisponiveis());
+        payload.put("possuiProva", request.getPossuiProva());
+        payload.put("dataProva", request.getDataProva());
+        payload.put("distanciaProva", request.getDistanciaProva());
+        payload.put("objetivoProva", request.getObjetivoProva());
+        payload.put("tempoDesejado", request.getTempoDesejado());
+        payload.put("importanciaProva", request.getImportanciaProva());
+        payload.put("possuiLesao", request.getPossuiLesao());
+        payload.put("observacoes", request.getObservacoes());
+        payload.put("duracaoSemanas", request.getDuracaoSemanas());
+        return payload;
     }
 
     private String promptParaTentativa(
