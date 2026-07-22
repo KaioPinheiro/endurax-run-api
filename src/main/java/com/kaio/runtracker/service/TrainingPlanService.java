@@ -1,11 +1,16 @@
 package com.kaio.runtracker.service;
 
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
+import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
 import com.kaio.runtracker.dto.TrainingPlanRequestDTO;
 import com.kaio.runtracker.dto.TrainingPlanResponseDTO;
 import com.kaio.runtracker.entity.TrainingPlan;
 import com.kaio.runtracker.repository.TrainingPlanRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -13,9 +18,11 @@ import java.util.List;
 public class TrainingPlanService {
 
     private final TrainingPlanRepository repository;
+    private final ObjectMapper objectMapper;
 
-    public TrainingPlanService(TrainingPlanRepository repository) {
+    public TrainingPlanService(TrainingPlanRepository repository, ObjectMapper objectMapper) {
         this.repository = repository;
+        this.objectMapper = objectMapper;
     }
 
     public List<TrainingPlanResponseDTO> listarTodos() {
@@ -65,6 +72,22 @@ public class TrainingPlanService {
 
     public void deletar(Long id) {
         repository.deleteById(id);
+    }
+
+    @Transactional
+    public TrainingPlan salvarPlanoGerado(
+            GerarPlanoTreinoRequestDTO formulario,
+            PlanoTreinoIAResponseDTO planoGerado) {
+        try {
+            TrainingPlan trainingPlan = new TrainingPlan();
+            trainingPlan.setNome(planoGerado.getTitulo());
+            trainingPlan.setObjetivo(formulario.getObjetivo());
+            trainingPlan.setNivel(formulario.getExperienciaCorrida());
+            trainingPlan.setDescricao(objectMapper.writeValueAsString(planoGerado));
+            return repository.save(trainingPlan);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Não foi possível persistir o plano gerado.", exception);
+        }
     }
 
     private TrainingPlanResponseDTO converterParaDTO(TrainingPlan trainingPlan) {

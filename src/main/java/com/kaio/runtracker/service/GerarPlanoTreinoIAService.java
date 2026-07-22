@@ -77,6 +77,16 @@ public class GerarPlanoTreinoIAService {
     }
 
     public PlanoTreinoIAResponseDTO gerarPlano(GerarPlanoTreinoRequestDTO request) {
+        return gerarPlano(request, true);
+    }
+
+    public PlanoTreinoIAResponseDTO gerarPlanoAutomatico(GerarPlanoTreinoRequestDTO request) {
+        return gerarPlano(request, false);
+    }
+
+    private PlanoTreinoIAResponseDTO gerarPlano(
+            GerarPlanoTreinoRequestDTO request,
+            boolean logDetalhado) {
         String geracaoId = UUID.randomUUID().toString().substring(0, 8);
         long inicioTotal = System.nanoTime();
         long validacaoMs = 0;
@@ -86,7 +96,13 @@ public class GerarPlanoTreinoIAService {
         Integer duracaoSemanas = null;
 
         try {
-            logger.info("Request: geracaoId={}\n{}", geracaoId, jsonLog(requestParaLog(request)));
+            if (logDetalhado) {
+                logger.info("Request: geracaoId={}\n{}", geracaoId, jsonLog(requestParaLog(request)));
+            } else {
+                logger.info("Geração automática recebida: geracaoId={}, duracaoSemanas={}, quantidadeDias={}",
+                        geracaoId, request.getDuracaoSemanas(),
+                        request.getDiasDisponiveis() != null ? request.getDiasDisponiveis().size() : 0);
+            }
 
             long inicioValidacao = System.nanoTime();
             duracaoSemanas = calcularDuracaoSemanas(request);
@@ -149,7 +165,14 @@ public class GerarPlanoTreinoIAService {
                             request.getDiaLongao()
                     );
                     parserMs += tempoMs(inicioParser);
-                    logger.info("Response: geracaoId={}\n{}", geracaoId, jsonLog(plano));
+                    if (logDetalhado) {
+                        logger.info("Response: geracaoId={}\n{}", geracaoId, jsonLog(plano));
+                    } else {
+                        logger.info("Resposta automática validada: geracaoId={}, semanas={}, possuiAlerta={}",
+                                geracaoId,
+                                plano.getSemanas() != null ? plano.getSemanas().size() : 0,
+                                StringUtils.hasText(plano.getAlerta()));
+                    }
                     logger.info(
                             "Plano IA gerado com sucesso: geracaoId={}, tentativa={}, semanas={}, treinos={}, possuiAlerta={}, parserMs={}, totalMs={}",
                             geracaoId,

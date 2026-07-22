@@ -22,4 +22,10 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.badRequest().body(erros);
     }
+
+    @ExceptionHandler(PagamentoException.class)
+    public ResponseEntity<Map<String, String>> tratarErroPagamento(PagamentoException exception) {
+        return ResponseEntity.status(exception.getStatus())
+                .body(Map.of("erro", exception.getMessage()));
+    }
 }
