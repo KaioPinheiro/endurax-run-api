@@ -1,5 +1,9 @@
 package com.kaio.runtracker.service;
 
+import com.kaio.runtracker.ai.agent.AgentExecutionContext;
+import com.kaio.runtracker.ai.agent.AgentExecutionResult;
+import com.kaio.runtracker.ai.agent.PlanoTreinoDuracaoCalculator;
+import com.kaio.runtracker.ai.agent.TrainingPlanAgent;
 import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,13 +16,16 @@ public class GeracaoPlanoService {
     private static final Logger logger = LoggerFactory.getLogger(GeracaoPlanoService.class);
 
     private final GeracaoPlanoTransacaoService transacaoService;
-    private final GerarPlanoTreinoIAService geradorIA;
+    private final TrainingPlanAgent trainingPlanAgent;
+    private final PlanoTreinoDuracaoCalculator duracaoCalculator;
 
     public GeracaoPlanoService(
             GeracaoPlanoTransacaoService transacaoService,
-            GerarPlanoTreinoIAService geradorIA) {
+            TrainingPlanAgent trainingPlanAgent,
+            PlanoTreinoDuracaoCalculator duracaoCalculator) {
         this.transacaoService = transacaoService;
-        this.geradorIA = geradorIA;
+        this.trainingPlanAgent = trainingPlanAgent;
+        this.duracaoCalculator = duracaoCalculator;
     }
 
     public void gerar(Long pagamentoId) {
@@ -33,7 +40,14 @@ public class GeracaoPlanoService {
         GeracaoPlanoTransacaoService.GeracaoContexto contexto = reserva.get();
         logger.info("Iniciando geração automática do plano: pagamentoId={}", pagamentoId);
         try {
-            PlanoTreinoIAResponseDTO plano = geradorIA.gerarPlanoAutomatico(contexto.formulario());
+            int duracaoSemanas = duracaoCalculator.calcular(contexto.formulario());
+            AgentExecutionContext agentContext = new AgentExecutionContext(
+                    contexto.formulario(),
+                    duracaoSemanas,
+                    duracaoCalculator.hoje(),
+                    "pagamento-" + pagamentoId);
+            AgentExecutionResult resultado = trainingPlanAgent.execute(agentContext);
+            PlanoTreinoIAResponseDTO plano = resultado.plano();
             Long planoId = transacaoService.concluir(contexto, plano);
             logger.info("Plano gerado automaticamente: pagamentoId={}, planoId={}", pagamentoId, planoId);
         } catch (Exception exception) {

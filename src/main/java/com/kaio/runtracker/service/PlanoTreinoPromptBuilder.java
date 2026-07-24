@@ -5,6 +5,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 @Service
 public class PlanoTreinoPromptBuilder {
@@ -29,12 +31,18 @@ public class PlanoTreinoPromptBuilder {
                 - A quantidade de treinos de corrida por semana deve ser exatamente igual a quantidade de dias disponiveis informados.
                 - Distribua tipos diferentes de corrida entre os dias disponiveis; nunca retorne somente um treino por semana.
                 - Programe no maximo um treino intervalado, de tiros ou de velocidade por semana.
+                - Programe no maximo dois treinos intensos por semana e nunca em dias consecutivos.
                 - Nos outros dias de corrida, varie entre rodagem leve ou moderada, treino de ritmo, regenerativo e longao, de forma coerente com o objetivo.
+                - Toda semana deve incluir ao menos um treino leve ou regenerativo.
                 - O longao deve ocorrer no Dia do longao informado, quando esse dia estiver preenchido.
                 - Nao inclua educativos em aquecimento, treino principal, desaquecimento ou observacoes.
                 - Nunca programe corrida comum em dias nao selecionados como disponiveis.
                 - Se houver prova marcada, a prova/competicao pode aparecer no dia real da prova, mesmo fora dos dias disponiveis.
                 - Progrida de forma coerente e evite aumento brusco de volume.
+                - Nao repita semanas identicas sem justificativa.
+                - Reduza a carga antes da prova.
+                - Quando a prova estiver dentro das quatro semanas do plano, use o período posterior somente para recuperação e retorno progressivo, sem tratá-lo como preparação para uma prova futura.
+                - Nao invente informacoes ausentes.
                 - Ajuste intensidade, volume e complexidade ao perfil, objetivo, ritmo, idade, lesoes e observacoes.
                 - Retorne apenas JSON valido, sem markdown. 
 
@@ -143,12 +151,78 @@ public class PlanoTreinoPromptBuilder {
         );
     }
 
+    public String criarPromptCorrecao(
+            GerarPlanoTreinoRequestDTO request,
+            int duracaoSemanas,
+            String planoJson,
+            List<String> errosJava,
+            List<String> avisosJava,
+            List<String> errosRevisao,
+            List<String> avisosRevisao) {
+        return """
+                Corrija o plano abaixo e retorne somente o JSON completo no mesmo contrato.
+
+                Regras:
+                - Mantenha exatamente %d semanas e nunca ultrapasse 6.
+                - Preserve semanas e treinos válidos; altere somente o necessário.
+                - Use somente os dias selecionados: %s.
+                - Mantenha a quantidade semanal de treinos igual à quantidade de dias selecionados.
+                - Use no máximo um intervalado e dois treinos intensos por semana.
+                - Não coloque treinos intensos em dias consecutivos.
+                - Inclua treino leve ou regenerativo e longão quando necessário.
+                - Respeite o volume atual, a progressão e a redução antes da prova.
+                - Após uma prova próxima, programe somente recuperação e retorno progressivo; não use treinos preparatórios como se a prova ainda não tivesse ocorrido.
+                - Não invente dados e não altere o contrato JSON.
+
+                Contexto: objetivo=%s; experiência=%s; volume=%s; distância=%s;
+                possuiProva=%s; dataProva=%s; possuiLesão=%s.
+
+                Erros determinísticos: %s
+                Avisos determinísticos: %s
+                Erros da revisão: %s
+                Avisos da revisão: %s
+
+                Plano a corrigir:
+                %s
+
+                Orientação específica da prova:
+                %s
+                """.formatted(
+                duracaoSemanas,
+                request.getDiasDisponiveis(),
+                valor(request.getObjetivo()),
+                valor(request.getExperienciaCorrida()),
+                valor(request.getVolumeSemanalAtual()),
+                valor(request.getDistanciaAlvo()),
+                Boolean.TRUE.equals(request.getPossuiProva()) ? "Sim" : "Não",
+                request.getDataProva() == null ? "Não informada" : request.getDataProva(),
+                Boolean.TRUE.equals(request.getPossuiLesao()) ? "Sim" : "Não",
+                errosJava,
+                avisosJava,
+                errosRevisao,
+                avisosRevisao,
+                planoJson,
+                orientacaoCiclo(request));
+    }
+
     private String orientacaoCiclo(GerarPlanoTreinoRequestDTO request) {
         if (Boolean.TRUE.equals(request.getPossuiProva())) {
+            if (provaProxima(request)) {
+                return """
+                        - A prova está a menos de quatro semanas, mas o plano deve manter exatamente quatro semanas.
+                        - Posicione a prova na semana e no dia correspondentes à data informada.
+                        - Use o período anterior para preparação curta, segura e realista, sem prometer preparação completa ou alcance da meta.
+                        - Use o período posterior para recuperação adaptada à distância da prova e retorno progressivo.
+                        - Não programe treino intenso nos sete dias posteriores à prova.
+                        - Não trate os treinos posteriores como preparação para uma prova que já ocorreu.
+                        - Preencha alerta com uma explicação clara de que o prazo é insuficiente para um ciclo completo e de que o plano continua com recuperação e evolução após o evento.
+                        - Modelo de alerta: "Sua prova está muito próxima para a realização de um ciclo completo de preparação. O plano foi estruturado com quatro semanas, utilizando o período anterior à prova para uma preparação segura e as semanas seguintes para recuperação e continuidade dos treinos."
+                        """;
+            }
             return """
                     - Oriente o ciclo pela prova informada: data, distancia, meta e importancia.
                     - O ciclo com prova deve ter no minimo 4 e no maximo 6 semanas.
-                    - Se a prova acontecer antes do fim do ciclo, prepare o atleta ate a prova e use as semanas restantes para recuperacao e retorno gradual.
+                    - Nao programe nenhum treino depois da data da prova.
                     - Se a prova estiver a mais de 6 semanas, gere apenas o primeiro ciclo orientado a ela.
                     """;
         }
@@ -157,6 +231,14 @@ public class PlanoTreinoPromptBuilder {
                 - Oriente o ciclo pelo objetivo geral do corredor.
                 - Nao use taper de prova; priorize consistencia, base, resistencia, tecnica ou condicionamento conforme o objetivo.
                 """;
+    }
+
+    private boolean provaProxima(GerarPlanoTreinoRequestDTO request) {
+        if (request.getDataProva() == null) {
+            return false;
+        }
+        long dias = ChronoUnit.DAYS.between(LocalDate.now(), request.getDataProva());
+        return dias >= 0 && dias < 28;
     }
 
     private String valor(String valor) {

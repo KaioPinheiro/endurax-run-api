@@ -1,5 +1,6 @@
 package com.kaio.runtracker.exception;
 
+import com.kaio.runtracker.ai.agent.PlanoTreinoReprovadoException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -26,6 +27,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(PagamentoException.class)
     public ResponseEntity<Map<String, String>> tratarErroPagamento(PagamentoException exception) {
         return ResponseEntity.status(exception.getStatus())
+                .body(Map.of("erro", exception.getMessage()));
+    }
+
+    @ExceptionHandler(PlanoTreinoReprovadoException.class)
+    public ResponseEntity<Map<String, String>> tratarPlanoReprovado(
+            PlanoTreinoReprovadoException exception) {
+        return ResponseEntity.status(422)
                 .body(Map.of("erro", exception.getMessage()));
     }
 }

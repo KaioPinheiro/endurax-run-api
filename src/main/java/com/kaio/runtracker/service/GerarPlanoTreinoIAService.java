@@ -2,6 +2,11 @@ package com.kaio.runtracker.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kaio.runtracker.ai.agent.AgentExecutionContext;
+import com.kaio.runtracker.ai.agent.PlanoTreinoDuracaoCalculator;
+import com.kaio.runtracker.ai.agent.ReviewResult;
+import com.kaio.runtracker.ai.agent.TrainingPlanGenerator;
+import com.kaio.runtracker.ai.agent.ValidationResult;
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
 import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
 import org.slf4j.Logger;
@@ -13,15 +18,13 @@ import org.springframework.util.StringUtils;
 
 import java.text.Normalizer;
 import java.time.Clock;
-import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.Locale;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
 @Service
-public class GerarPlanoTreinoIAService {
+public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
 
     private static final Logger logger =
             LoggerFactory.getLogger(GerarPlanoTreinoIAService.class);
@@ -32,6 +35,7 @@ public class GerarPlanoTreinoIAService {
     private final PlanoTreinoRespostaParser respostaParser;
     private final Clock clock;
     private final ObjectMapper objectMapper;
+    private final PlanoTreinoDuracaoCalculator duracaoCalculator;
 
     @Autowired
     public GerarPlanoTreinoIAService(
@@ -74,19 +78,21 @@ public class GerarPlanoTreinoIAService {
         this.respostaParser = respostaParser;
         this.clock = clock;
         this.objectMapper = objectMapper;
+        this.duracaoCalculator = new PlanoTreinoDuracaoCalculator(clock);
     }
 
     public PlanoTreinoIAResponseDTO gerarPlano(GerarPlanoTreinoRequestDTO request) {
-        return gerarPlano(request, true);
+        return gerarPlano(request, true, null);
     }
 
     public PlanoTreinoIAResponseDTO gerarPlanoAutomatico(GerarPlanoTreinoRequestDTO request) {
-        return gerarPlano(request, false);
+        return gerarPlano(request, false, null);
     }
 
     private PlanoTreinoIAResponseDTO gerarPlano(
             GerarPlanoTreinoRequestDTO request,
-            boolean logDetalhado) {
+            boolean logDetalhado,
+            Integer duracaoForcada) {
         String geracaoId = UUID.randomUUID().toString().substring(0, 8);
         long inicioTotal = System.nanoTime();
         long validacaoMs = 0;
@@ -105,7 +111,9 @@ public class GerarPlanoTreinoIAService {
             }
 
             long inicioValidacao = System.nanoTime();
-            duracaoSemanas = calcularDuracaoSemanas(request);
+            duracaoSemanas = duracaoForcada == null
+                    ? calcularDuracaoSemanas(request)
+                    : duracaoForcada;
             validarIdadeMinimaParaMaratona(request);
             validarDiasMinimosParaMaratona(request);
             validarVolumeSemanalParaMaratona(request);
@@ -227,6 +235,44 @@ public class GerarPlanoTreinoIAService {
         }
     }
 
+    @Override
+    public PlanoTreinoIAResponseDTO generate(AgentExecutionContext context) {
+        return gerarPlano(context.request(), false, context.duracaoSemanas());
+    }
+
+    @Override
+    public PlanoTreinoIAResponseDTO correct(
+            PlanoTreinoIAResponseDTO plano,
+            AgentExecutionContext context,
+            ValidationResult validacao,
+            ReviewResult revisao) {
+        try {
+            String prompt = promptBuilder.criarPromptCorrecao(
+                    context.request(),
+                    context.duracaoSemanas(),
+                    objectMapper.writeValueAsString(plano),
+                    validacao.getErrors(),
+                    validacao.getWarnings(),
+                    revisao.errors(),
+                    revisao.warnings());
+            String resposta = openAIService.enviarPromptPlanoTreino(
+                    promptBuilder.criarSystemPrompt(),
+                    prompt,
+                    context.duracaoSemanas());
+            return respostaParser.parsePlanoTreino(
+                    resposta,
+                    context.duracaoSemanas(),
+                    context.request().getDiasDisponiveis(),
+                    Boolean.TRUE.equals(context.request().getPossuiProva()),
+                    context.request().getDiaLongao());
+        } catch (JsonProcessingException exception) {
+            throw new GerarTreinoIAException(
+                    HttpStatus.BAD_GATEWAY,
+                    "Não foi possível preparar a correção do plano.",
+                    exception);
+        }
+    }
+
     private int quantidadeSemanas(PlanoTreinoIAResponseDTO plano) {
         return plano.getSemanas() == null ? 0 : plano.getSemanas().size();
     }
@@ -320,35 +366,7 @@ public class GerarPlanoTreinoIAService {
     }
 
     int calcularDuracaoSemanas(GerarPlanoTreinoRequestDTO request) {
-        if (!Boolean.TRUE.equals(request.getPossuiProva())) {
-            Integer duracaoSemanas = request.getDuracaoSemanas();
-            if (duracaoSemanas == null) {
-                return 4;
-            }
-
-            if (duracaoSemanas == 4 || duracaoSemanas == 5 || duracaoSemanas == 6) {
-                return duracaoSemanas;
-            }
-
-            throw new GerarTreinoIAException(
-                    HttpStatus.BAD_REQUEST,
-                    "A duração deve ser 4, 5 ou 6 semanas quando não existe prova marcada."
-            );
-        }
-
-        LocalDate hoje = LocalDate.now(clock);
-        LocalDate dataProva = request.getDataProva();
-        long diasRestantes = ChronoUnit.DAYS.between(hoje, dataProva);
-
-        if (diasRestantes < 0) {
-            throw new GerarTreinoIAException(
-                    HttpStatus.BAD_REQUEST,
-                    "A data da prova não pode estar no passado."
-            );
-        }
-
-        int semanas = (int) Math.ceil(diasRestantes / 7.0);
-        return Math.min(6, Math.max(4, semanas));
+        return duracaoCalculator.calcular(request);
     }
 
     void validarDiasMinimosParaMaratona(GerarPlanoTreinoRequestDTO request) {

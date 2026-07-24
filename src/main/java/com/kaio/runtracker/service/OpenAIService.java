@@ -82,6 +82,21 @@ public class OpenAIService {
         );
     }
 
+    public String enviarPromptRevisaoPlano(
+            String systemPrompt,
+            String userPrompt,
+            Integer duracaoSemanas) {
+        return enviarPrompt(
+                systemPrompt,
+                userPrompt,
+                "revisão do plano completo",
+                duracaoSemanas,
+                "O serviço retornou uma revisão vazia.",
+                "O serviço retornou uma revisão em formato inválido.",
+                "Não foi possível processar a revisão do plano.",
+                "Não foi possível revisar o plano agora.");
+    }
+
     public String getModel() {
         return model;
     }
