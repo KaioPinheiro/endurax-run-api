@@ -7,6 +7,7 @@ import com.kaio.runtracker.ai.agent.PlanoTreinoDuracaoCalculator;
 import com.kaio.runtracker.ai.agent.ReviewResult;
 import com.kaio.runtracker.ai.agent.TrainingPlanGenerator;
 import com.kaio.runtracker.ai.agent.ValidationResult;
+import com.kaio.runtracker.ai.prompt.PlanoTreinoCorrectionPromptBuilder;
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
 import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
 import org.slf4j.Logger;
@@ -31,6 +32,7 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
     private static final int MAX_TENTATIVAS_GERACAO = 2;
 
     private final PlanoTreinoPromptBuilder promptBuilder;
+    private final PlanoTreinoCorrectionPromptBuilder correctionPromptBuilder;
     private final OpenAIService openAIService;
     private final PlanoTreinoRespostaParser respostaParser;
     private final Clock clock;
@@ -40,10 +42,17 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
     @Autowired
     public GerarPlanoTreinoIAService(
             PlanoTreinoPromptBuilder promptBuilder,
+            PlanoTreinoCorrectionPromptBuilder correctionPromptBuilder,
             OpenAIService openAIService,
             PlanoTreinoRespostaParser respostaParser,
             ObjectMapper objectMapper) {
-        this(promptBuilder, openAIService, respostaParser, Clock.systemDefaultZone(), objectMapper);
+        this(
+                promptBuilder,
+                correctionPromptBuilder,
+                openAIService,
+                respostaParser,
+                Clock.systemDefaultZone(),
+                objectMapper);
     }
 
     GerarPlanoTreinoIAService(
@@ -60,6 +69,7 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
             Clock clock) {
         this(
                 promptBuilder,
+                new PlanoTreinoCorrectionPromptBuilder(promptBuilder),
                 openAIService,
                 respostaParser,
                 clock,
@@ -69,11 +79,13 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
 
     GerarPlanoTreinoIAService(
             PlanoTreinoPromptBuilder promptBuilder,
+            PlanoTreinoCorrectionPromptBuilder correctionPromptBuilder,
             OpenAIService openAIService,
             PlanoTreinoRespostaParser respostaParser,
             Clock clock,
             ObjectMapper objectMapper) {
         this.promptBuilder = promptBuilder;
+        this.correctionPromptBuilder = correctionPromptBuilder;
         this.openAIService = openAIService;
         this.respostaParser = respostaParser;
         this.clock = clock;
@@ -247,7 +259,7 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
             ValidationResult validacao,
             ReviewResult revisao) {
         try {
-            String prompt = promptBuilder.criarPromptCorrecao(
+            String prompt = correctionPromptBuilder.criarPrompt(
                     context.request(),
                     context.duracaoSemanas(),
                     objectMapper.writeValueAsString(plano),

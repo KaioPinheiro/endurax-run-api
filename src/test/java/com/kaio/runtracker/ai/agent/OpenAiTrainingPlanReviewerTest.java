@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
 import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
 import com.kaio.runtracker.service.OpenAIService;
+import com.kaio.runtracker.ai.prompt.PlanoTreinoReviewPromptBuilder;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
@@ -29,8 +30,12 @@ class OpenAiTrainingPlanReviewerTest {
                           "summary": "Necessita correção"
                         }
                         """);
+        ObjectMapper objectMapper = new ObjectMapper();
         OpenAiTrainingPlanReviewer reviewer =
-                new OpenAiTrainingPlanReviewer(openAIService, new ObjectMapper());
+                new OpenAiTrainingPlanReviewer(
+                        openAIService,
+                        objectMapper,
+                        new PlanoTreinoReviewPromptBuilder(objectMapper));
         GerarPlanoTreinoRequestDTO request = new GerarPlanoTreinoRequestDTO();
         request.setDiasDisponiveis(List.of("terça-feira"));
         AgentExecutionContext context = new AgentExecutionContext(

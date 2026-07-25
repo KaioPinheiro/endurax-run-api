@@ -108,7 +108,7 @@ public class PlanoTreinoRespostaParser {
             );
             throw new GerarTreinoIAException(
                     BAD_GATEWAY,
-                    "A IA retornou um plano em formato inválido. Tente novamente.",
+                    "O serviço retornou um plano em formato inválido. Tente novamente.",
                     exception
             );
         }
@@ -121,7 +121,7 @@ public class PlanoTreinoRespostaParser {
             boolean possuiProva,
             String diaLongao) {
         if (plano == null) {
-            throw erroFormato("A IA retornou um plano vazio.");
+            throw erroFormato("O serviço retornou um plano vazio.");
         }
 
         int quantidadeOriginal = plano.getSemanas() == null
@@ -158,7 +158,7 @@ public class PlanoTreinoRespostaParser {
         }
 
         if (semanasPorNumero.isEmpty()) {
-            throw erroFormato("A IA não retornou nenhuma semana válida.");
+            throw erroFormato("O serviço não retornou nenhuma semana válida.");
         }
 
         List<Integer> semanasFaltantes = new ArrayList<>();
@@ -186,7 +186,7 @@ public class PlanoTreinoRespostaParser {
                     "Plano completo IA: semanas faltantes sem normalização segura={}",
                     semanasFaltantes
             );
-            throw erroFormato("A IA retornou um plano com semanas faltantes.");
+            throw erroFormato("O serviço retornou um plano com semanas faltantes.");
         }
 
         semanasNormalizadas.sort(Comparator.comparing(SemanaPlanoIAResponseDTO::getNumeroSemana));
@@ -312,7 +312,7 @@ public class PlanoTreinoRespostaParser {
                         contexto,
                         treino.getDiaSemana()
                 );
-                throw erroFormato("A IA retornou menos treinos de corrida do que os dias escolhidos.");
+                throw erroFormato("O serviço retornou menos treinos de corrida do que os dias escolhidos.");
             }
 
             if (!diaDisponivel && treinoCorrida) {
@@ -324,7 +324,7 @@ public class PlanoTreinoRespostaParser {
                         contexto,
                         treino.getDiaSemana()
                 );
-                throw erroFormato("A IA retornou corrida em dia nao selecionado.");
+                throw erroFormato("O serviço retornou corrida em dia nao selecionado.");
             }
 
             if (diaDisponivel) {
@@ -338,7 +338,7 @@ public class PlanoTreinoRespostaParser {
         }
 
         if (treinosCorridaEmDiasDisponiveis < quantidadeEsperada) {
-            throw erroFormato("A IA retornou quantidade de treinos diferente dos dias escolhidos.");
+            throw erroFormato("O serviço retornou quantidade de treinos diferente dos dias escolhidos.");
         }
 
         validarVariedadeTreinos(treinos, contexto, diaLongao);
@@ -356,14 +356,14 @@ public class PlanoTreinoRespostaParser {
         long intervalados = corridas.stream().filter(this::ehIntervalado).count();
         if (intervalados > 1) {
             logger.warn("Plano completo IA: excesso de intervalados em {}: {}", contexto, intervalados);
-            throw erroFormato("A IA retornou mais de um treino intervalado na mesma semana.");
+            throw erroFormato("O serviço retornou mais de um treino intervalado na mesma semana.");
         }
 
         boolean possuiEducativos = corridas.stream()
                 .map(this::textoCompleto)
                 .anyMatch(texto -> texto.contains("educativo"));
         if (possuiEducativos) {
-            throw erroFormato("A IA retornou educativos, que não foram solicitados.");
+            throw erroFormato("O serviço retornou educativos, que não foram solicitados.");
         }
 
         if (StringUtils.hasText(diaLongao)) {
@@ -372,7 +372,7 @@ public class PlanoTreinoRespostaParser {
                     .anyMatch(treino -> normalizarDia(treino.getDiaSemana())
                             .equals(diaLongaoNormalizado) && ehLongao(treino));
             if (!longaoNoDiaEscolhido) {
-                throw erroFormato("A IA não colocou o longão no dia escolhido.");
+                throw erroFormato("O serviço não colocou o longão no dia escolhido.");
             }
         }
     }
@@ -427,7 +427,7 @@ public class PlanoTreinoRespostaParser {
                     treino.getDiaSemana()
             );
             throw erroFormato(
-                    "A IA retornou treino sem aquecimento, bloco principal e desaquecimento detalhados com pace."
+                    "O serviço retornou treino sem aquecimento, bloco principal e desaquecimento detalhados com pace."
             );
         }
     }

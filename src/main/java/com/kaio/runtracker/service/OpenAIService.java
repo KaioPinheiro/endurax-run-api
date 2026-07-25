@@ -3,9 +3,10 @@ package com.kaio.runtracker.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kaio.runtracker.config.OpenAiProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -27,8 +28,7 @@ public class OpenAIService {
     private static final Logger logger =
             LoggerFactory.getLogger(OpenAIService.class);
 
-    private static final String OPENAI_URL =
-            "https://api.openai.com/v1/chat/completions";
+    private static final String CHAT_COMPLETIONS_PATH = "/v1/chat/completions";
 
     private final String apiKey;
     private final String model;
@@ -37,28 +37,26 @@ public class OpenAIService {
     private final RestClient restClient;
 
     public OpenAIService(
-            @Value("${openai.api.key:}") String apiKey,
-            @Value("${openai.model:gpt-4o-mini}") String model,
-            @Value("${openai.max-output-tokens:${OPENAI_MAX_OUTPUT_TOKENS:7000}}")
-            int maxOutputTokens,
-            ObjectMapper objectMapper) {
-        this.apiKey = apiKey;
-        this.model = model;
-        this.maxOutputTokens = maxOutputTokens;
+            OpenAiProperties properties,
+            ObjectMapper objectMapper,
+            @Qualifier("openAiRestClient") RestClient restClient) {
+        this.apiKey = properties.getApiKey();
+        this.model = properties.getModel();
+        this.maxOutputTokens = properties.getMaxOutputTokens();
         this.objectMapper = objectMapper;
-        this.restClient = RestClient.create();
+        this.restClient = restClient;
     }
 
-    public String enviarPromptPlanoSemanal(String systemPrompt, String userPrompt) {
+    public String enviarPromptTreino(String systemPrompt, String userPrompt) {
         return enviarPrompt(
                 systemPrompt,
                 userPrompt,
-                "plano semanal",
+                "treino unitário",
                 null,
-                "A IA retornou uma resposta semanal vazia.",
-                "A IA retornou um plano semanal em formato inválido. Tente novamente.",
-                "Não foi possível processar o plano semanal. Tente novamente.",
-                "A OpenAI não conseguiu gerar o plano semanal agora."
+                "O serviço retornou uma resposta vazia para o treino.",
+                "O serviço retornou um treino em formato inválido. Tente novamente.",
+                "Não foi possível processar o treino. Tente novamente.",
+                "Não foi possível gerar o treino agora."
         );
     }
 
@@ -75,10 +73,10 @@ public class OpenAIService {
                 userPrompt,
                 "plano completo",
                 duracaoSemanas,
-                "A IA retornou uma resposta vazia para o plano completo.",
-                "A IA retornou um plano em formato inválido. Tente novamente.",
+                "O serviço retornou uma resposta vazia para o plano completo.",
+                "O serviço retornou um plano em formato inválido. Tente novamente.",
                 "Não foi possível processar o plano. Tente novamente.",
-                "A OpenAI não conseguiu gerar o plano agora."
+                "Não foi possível gerar o plano agora."
         );
     }
 
@@ -126,7 +124,7 @@ public class OpenAIService {
         long inicio = System.nanoTime();
         try {
             String responseBody = restClient.post()
-                    .uri(OPENAI_URL)
+                    .uri(CHAT_COMPLETIONS_PATH)
                     .contentType(MediaType.APPLICATION_JSON)
                     .headers(headers -> headers.setBearerAuth(apiKey.trim()))
                     .body(body)
@@ -182,7 +180,7 @@ public class OpenAIService {
             );
             throw new GerarTreinoIAException(
                     SERVICE_UNAVAILABLE,
-                    "O Coach IA está temporariamente indisponível. Tente novamente.",
+                    "O serviço de geração está temporariamente indisponível. Tente novamente.",
                     exception
             );
         } catch (Exception exception) {
@@ -212,10 +210,11 @@ public class OpenAIService {
         return switch (status) {
             case 401 -> new GerarTreinoIAException(
                     SERVICE_UNAVAILABLE,
-                    "A configuração do Coach IA é inválida.", exception);
+                    "A configuração do serviço de geração é inválida.", exception);
             case 429 -> new GerarTreinoIAException(
                     TOO_MANY_REQUESTS,
-                    "O Coach IA atingiu o limite de uso ou a cota disponível.", exception);
+                    "O serviço de geração atingiu o limite de uso. Tente novamente mais tarde.",
+                    exception);
             default -> new GerarTreinoIAException(
                     BAD_GATEWAY,
                     mensagemErroOpenAI, exception);
@@ -227,17 +226,17 @@ public class OpenAIService {
                 || "SUA_CHAVE_OPENAI".equals(apiKey.trim())) {
             throw new GerarTreinoIAException(
                     SERVICE_UNAVAILABLE,
-                    "O Coach IA ainda não foi configurado neste ambiente.");
+                    "O serviço de geração ainda não foi configurado neste ambiente.");
         }
         if (!StringUtils.hasText(model)) {
             throw new GerarTreinoIAException(
                     SERVICE_UNAVAILABLE,
-                    "O modelo do Coach IA não está configurado.");
+                    "O serviço de geração não está configurado corretamente.");
         }
     }
 
     private GerarTreinoIAException erroFormato(String detalhe) {
-        logger.warn("Resposta da IA rejeitada: {}", detalhe);
+        logger.warn("Resposta do serviço rejeitada: {}", detalhe);
         return new GerarTreinoIAException(
                 BAD_GATEWAY,
                 detalhe + " Tente gerar novamente.");

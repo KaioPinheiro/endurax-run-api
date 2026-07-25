@@ -26,7 +26,7 @@ class PlanoTreinoRespostaParserTest {
 
         assertEquals("502 BAD_GATEWAY", exception.getStatus().toString());
         assertEquals(
-                "A IA retornou um plano com semanas faltantes. Tente gerar novamente.",
+                "O serviço retornou um plano com semanas faltantes. Tente gerar novamente.",
                 exception.getMessage()
         );
     }
@@ -174,7 +174,7 @@ class PlanoTreinoRespostaParserTest {
 
         assertEquals("502 BAD_GATEWAY", exception.getStatus().toString());
         assertEquals(
-                "A IA retornou menos treinos de corrida do que os dias escolhidos. Tente gerar novamente.",
+                "O serviço retornou menos treinos de corrida do que os dias escolhidos. Tente gerar novamente.",
                 exception.getMessage()
         );
     }
@@ -196,7 +196,7 @@ class PlanoTreinoRespostaParserTest {
 
         assertEquals("502 BAD_GATEWAY", exception.getStatus().toString());
         assertEquals(
-                "A IA retornou corrida em dia nao selecionado. Tente gerar novamente.",
+                "O serviço retornou corrida em dia nao selecionado. Tente gerar novamente.",
                 exception.getMessage()
         );
     }
@@ -226,7 +226,7 @@ class PlanoTreinoRespostaParserTest {
         );
 
         assertEquals(
-                "A IA retornou treino sem aquecimento, bloco principal e desaquecimento detalhados com pace. Tente gerar novamente.",
+                "O serviço retornou treino sem aquecimento, bloco principal e desaquecimento detalhados com pace. Tente gerar novamente.",
                 exception.getMessage()
         );
     }
