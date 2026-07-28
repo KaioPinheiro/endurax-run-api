@@ -440,7 +440,8 @@ class GerarPlanoTreinoIAServiceTest {
         OpenAIService openAIService = mock(OpenAIService.class);
         GerarPlanoTreinoIAService serviceComMock =
                 new GerarPlanoTreinoIAService(
-                        new PlanoTreinoPromptBuilder(),
+                        new PlanoTreinoPromptBuilder(
+                                new com.kaio.runtracker.ai.prompt.PromptObjetivoFactory()),
                         openAIService,
                         new PlanoTreinoRespostaParser(new ObjectMapper()),
                         Clock.fixed(

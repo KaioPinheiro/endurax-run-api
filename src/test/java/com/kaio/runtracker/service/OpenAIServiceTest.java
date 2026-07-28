@@ -71,6 +71,22 @@ class OpenAIServiceTest {
         server.verify();
     }
 
+    @Test
+    void rejeitaChaveAusenteAntesDeEnviarRequisicao() {
+        OpenAiProperties properties = new OpenAiProperties();
+        properties.setApiKey("");
+
+        OpenAIService serviceSemChave = new OpenAIService(
+                properties,
+                new ObjectMapper(),
+                RestClient.builder().baseUrl(properties.getBaseUrl()).build());
+
+        assertThatThrownBy(() ->
+                serviceSemChave.enviarPromptPlanoTreino("sistema", "usuario", 4))
+                .isInstanceOf(GerarTreinoIAException.class)
+                .hasMessageContaining("ainda não foi configurado");
+    }
+
     private void responder(String body) {
         server.expect(once(), requestTo("https://servico.teste/v1/chat/completions"))
                 .andExpect(method(POST))

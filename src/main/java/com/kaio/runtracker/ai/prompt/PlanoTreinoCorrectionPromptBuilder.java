@@ -38,9 +38,11 @@ public class PlanoTreinoCorrectionPromptBuilder {
                 - Inclua treino leve ou regenerativo e longão quando necessário.
                 - Respeite o volume atual, a progressão e a redução antes da prova.
                 - Após uma prova próxima, programe somente recuperação e retorno progressivo; não use treinos preparatórios como se a prova ainda não tivesse ocorrido.
+                - Se o atleta não corre 5 km direto, mantenha corrida/caminhada conservadora em todas as sessões, sem treinos intensos.
                 - Não invente dados e não altere o contrato JSON.
 
-                Contexto: objetivo=%s; experiência=%s; volume=%s; distância=%s;
+                Contexto: objetivo=%s; corre5KmDireto=%s; tempo5Km=%s;
+                maiorDistancia=%s; experiência=%s; volume=%s; distância=%s;
                 possuiProva=%s; dataProva=%s; possuiLesão=%s.
 
                 Erros determinísticos: %s
@@ -57,6 +59,9 @@ public class PlanoTreinoCorrectionPromptBuilder {
                 duracaoSemanas,
                 request.getDiasDisponiveis(),
                 valor(request.getObjetivo()),
+                respostaSimNao(request.getCorre5KmSemCaminhar()),
+                valor(request.getTempo5Km()),
+                valor(request.getMaiorDistanciaCorrida()),
                 valor(request.getExperienciaCorrida()),
                 valor(request.getVolumeSemanalAtual()),
                 valor(request.getDistanciaAlvo()),
@@ -73,5 +78,12 @@ public class PlanoTreinoCorrectionPromptBuilder {
 
     private String valor(String valor) {
         return StringUtils.hasText(valor) ? valor.trim() : "Nao informado";
+    }
+
+    private String respostaSimNao(Boolean valor) {
+        if (valor == null) {
+            return "Nao informado";
+        }
+        return valor ? "Sim" : "Nao";
     }
 }

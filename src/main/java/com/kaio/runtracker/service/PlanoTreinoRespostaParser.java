@@ -17,6 +17,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.springframework.http.HttpStatus.BAD_GATEWAY;
 
@@ -25,6 +27,8 @@ public class PlanoTreinoRespostaParser {
 
     private static final Logger logger =
             LoggerFactory.getLogger(PlanoTreinoRespostaParser.class);
+    private static final Pattern MINUTOS_PATTERN =
+            Pattern.compile("\\b(\\d+)\\s*min(?:uto)?s?\\b(?!\\s*/\\s*km)");
 
     private static final List<String> DIAS_SEMANA = List.of(
             "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira",
@@ -430,6 +434,135 @@ public class PlanoTreinoRespostaParser {
                     "O serviço retornou treino sem aquecimento, bloco principal e desaquecimento detalhados com pace."
             );
         }
+
+        if (!temDistanciaValida(treino.getDistanciaKm())
+                || !temPaceSugerido(treino.getPaceSugerido())) {
+            logger.warn(
+                    "Plano completo IA: metricas ausentes em {}: dia={}, possuiDistancia={}, possuiPace={}",
+                    contexto,
+                    treino.getDiaSemana(),
+                    temDistanciaValida(treino.getDistanciaKm()),
+                    temPaceSugerido(treino.getPaceSugerido())
+            );
+            throw erroFormato(
+                    "O serviço retornou treino sem distância ou pace sugerido."
+            );
+        }
+
+        validarDuracaoSessao(treino, descricao, contexto);
+    }
+
+    private boolean temPaceSugerido(String valor) {
+        if (!StringUtils.hasText(valor)) {
+            return false;
+        }
+        String pace = normalizar(valor);
+        return !pace.equals("-")
+                && !pace.equals("nao se aplica");
+    }
+
+    private void validarDuracaoSessao(
+            TreinoPlanoIAResponseDTO treino,
+            String descricao,
+            String contexto) {
+        Integer duracaoInformada = extrairDuracaoInformada(treino.getDuracaoEstimada());
+        Integer aquecimento = somarMinutos(trechoEntre(
+                descricao, "aquecimento:", "principal:"));
+        Integer principal = calcularMinutosPrincipal(trechoEntre(
+                descricao, "principal:", "desaquecimento:"));
+        Integer desaquecimento = somarMinutos(trechoApos(
+                descricao, "desaquecimento:"));
+
+        if (duracaoInformada == null
+                || aquecimento == null
+                || principal == null
+                || desaquecimento == null) {
+            return;
+        }
+
+        int duracaoCalculada = aquecimento + principal + desaquecimento;
+        if (duracaoInformada != duracaoCalculada) {
+            logger.warn(
+                    "Plano completo IA: duracao inconsistente em {}: dia={}, informada={} min, calculada={} min",
+                    contexto,
+                    treino.getDiaSemana(),
+                    duracaoInformada,
+                    duracaoCalculada
+            );
+            throw erroFormato(
+                    "O serviço retornou duração incompatível com a soma dos blocos do treino."
+            );
+        }
+    }
+
+    private Integer extrairDuracaoInformada(String valor) {
+        if (!StringUtils.hasText(valor)) {
+            return null;
+        }
+        Matcher matcher = Pattern.compile(
+                "^\\s*(\\d+)\\s*(?:(?:min|minuto|minutos)\\b)?\\s*$",
+                Pattern.CASE_INSENSITIVE
+        ).matcher(valor);
+        return matcher.find() ? Integer.parseInt(matcher.group(1)) : null;
+    }
+
+    private Integer calcularMinutosPrincipal(String principal) {
+        Integer soma = somarMinutos(principal);
+        if (soma == null) {
+            return null;
+        }
+
+        Matcher repetirNoFinal = Pattern.compile(
+                "\\(\\s*repetir\\s+(\\d+)\\s*x\\s*\\)\\s*\\|?\\s*$",
+                Pattern.CASE_INSENSITIVE
+        ).matcher(principal);
+        if (repetirNoFinal.find()) {
+            return soma * Integer.parseInt(repetirNoFinal.group(1));
+        }
+
+        Matcher repeticaoComParenteses = Pattern.compile(
+                "(\\d+)\\s*x\\s*\\(([^()]*)\\)",
+                Pattern.CASE_INSENSITIVE
+        ).matcher(principal);
+        int minutosRepeticoes = 0;
+        StringBuffer restante = new StringBuffer();
+        boolean encontrouRepeticao = false;
+        while (repeticaoComParenteses.find()) {
+            Integer minutosInternos = somarMinutos(repeticaoComParenteses.group(2));
+            if (minutosInternos == null) {
+                return null;
+            }
+            minutosRepeticoes += Integer.parseInt(repeticaoComParenteses.group(1))
+                    * minutosInternos;
+            repeticaoComParenteses.appendReplacement(restante, "");
+            encontrouRepeticao = true;
+        }
+        if (encontrouRepeticao) {
+            repeticaoComParenteses.appendTail(restante);
+            Integer minutosRestantes = somarMinutos(restante.toString());
+            return minutosRepeticoes + (minutosRestantes == null ? 0 : minutosRestantes);
+        }
+
+        Matcher repeticaoNoInicio = Pattern.compile(
+                "^\\s*(\\d+)\\s*x\\b",
+                Pattern.CASE_INSENSITIVE
+        ).matcher(principal);
+        if (repeticaoNoInicio.find()) {
+            return soma * Integer.parseInt(repeticaoNoInicio.group(1));
+        }
+
+        return soma;
+    }
+
+    private Integer somarMinutos(String trecho) {
+        Matcher matcher = MINUTOS_PATTERN.matcher(trecho);
+        int total = 0;
+        boolean encontrou = false;
+        while (matcher.find()) {
+            total += Integer.parseInt(matcher.group(1));
+            encontrou = true;
+        }
+        return encontrou ? total : null;
     }
 
     private String trechoEntre(String texto, String inicio, String fim) {
@@ -477,16 +610,21 @@ public class PlanoTreinoRespostaParser {
                 valorTexto(treino.getDescricao())
         ));
 
+        boolean caminhadaSemCorridaOuTrote = categoria.contains("caminhada")
+                && !categoria.contains("corrida")
+                && !categoria.contains("trote");
+
         if (categoria.contains("descanso")
                 || categoria.contains("fortalecimento")
                 || categoria.contains("mobilidade")
                 || categoria.contains("alongamento")
-                || categoria.contains("caminhada")) {
+                || caminhadaSemCorridaOuTrote) {
             return false;
         }
 
         return temDistanciaValida(treino.getDistanciaKm())
                 || texto.contains("corrida")
+                || texto.contains("trote")
                 || texto.contains("rodagem")
                 || texto.contains("longao")
                 || texto.contains("interval")

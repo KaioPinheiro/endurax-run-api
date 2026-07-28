@@ -105,6 +105,37 @@ class TrainingPlanValidatorTest {
     }
 
     @Test
+    void rejeitaTreinoIntensoParaQuemAindaNaoCorreCincoKmDireto() {
+        GerarPlanoTreinoRequestDTO request = request(false, false, "5 km");
+        request.setCorre5KmSemCaminhar(false);
+
+        ValidationResult resultado = validar(plano(4), request, 4);
+
+        assertErro(resultado, "ainda não corre 5 km direto");
+        assertErro(resultado, "deve alternar trote ou corrida leve com caminhada");
+    }
+
+    @Test
+    void aprovaCorridaECaminhadaParaQuemAindaNaoCorreCincoKmDireto() {
+        GerarPlanoTreinoRequestDTO request = request(false, false, "5 km");
+        request.setCorre5KmSemCaminhar(false);
+        PlanoTreinoIAResponseDTO plano = plano(4);
+        plano.getSemanas().forEach(semana ->
+                semana.getTreinos().forEach(treino -> {
+                    treino.setTipo("Leve");
+                    treino.setTitulo("Corrida e caminhada");
+                    treino.setDescricao(
+                            "Aquecimento: 5 min de caminhada | "
+                                    + "Principal: 6 x 2 min de trote com 2 min de caminhada | "
+                                    + "Desaquecimento: 5 min de caminhada");
+                }));
+
+        ValidationResult resultado = validar(plano, request, 4);
+
+        assertTrue(resultado.isValid(), () -> "Erros: " + resultado.getErrors());
+    }
+
+    @Test
     void rejeitaMaratonaSemLongao() {
         PlanoTreinoIAResponseDTO plano = plano(4);
         plano.getSemanas().forEach(semana -> {

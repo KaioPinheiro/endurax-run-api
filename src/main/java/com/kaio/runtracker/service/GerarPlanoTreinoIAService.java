@@ -327,6 +327,9 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("idade", request.getIdade());
         payload.put("objetivo", request.getObjetivo());
+        payload.put("corre5KmSemCaminhar", request.getCorre5KmSemCaminhar());
+        payload.put("tempo5Km", request.getTempo5Km());
+        payload.put("maiorDistanciaCorrida", request.getMaiorDistanciaCorrida());
         payload.put("experienciaCorrida", request.getExperienciaCorrida());
         payload.put("volumeSemanalAtual", request.getVolumeSemanalAtual());
         payload.put("ritmoConfortavel", request.getRitmoConfortavel());

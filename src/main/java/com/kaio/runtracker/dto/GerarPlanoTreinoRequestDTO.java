@@ -22,10 +22,13 @@ public class GerarPlanoTreinoRequestDTO {
     @NotBlank(message = "O objetivo é obrigatório")
     private String objetivo;
 
+    private Boolean corre5KmSemCaminhar;
+    private String tempo5Km;
+    private String maiorDistanciaCorrida;
+
     @NotBlank(message = "A experiência na corrida é obrigatória")
     private String experienciaCorrida;
 
-    @NotBlank(message = "O volume semanal atual é obrigatório")
     private String volumeSemanalAtual;
 
     @NotBlank(message = "O ritmo confortável atual é obrigatório")
@@ -76,6 +79,17 @@ public class GerarPlanoTreinoRequestDTO {
                 || duracaoSemanas == 4
                 || duracaoSemanas == 5
                 || duracaoSemanas == 6;
+    }
+
+    @AssertTrue(message = "O volume semanal atual é obrigatório")
+    public boolean isVolumeSemanalAtualValido() {
+        return experienciaSemVolumeSemanal() || temTexto(volumeSemanalAtual);
+    }
+
+    private boolean experienciaSemVolumeSemanal() {
+        return "Nunca corri".equalsIgnoreCase(experienciaCorrida)
+                || "Estou parado".equalsIgnoreCase(experienciaCorrida)
+                || "Estou parado(a)".equalsIgnoreCase(experienciaCorrida);
     }
 
     private boolean temTexto(String valor) {

@@ -180,6 +180,123 @@ class PlanoTreinoRespostaParserTest {
     }
 
     @Test
+    void aceitaCorridaAlternadaComCaminhadaParaIniciante() {
+        String treinoMisto = """
+                {
+                  "diaSemana": "terça-feira",
+                  "titulo": "Corrida e caminhada",
+                  "tipo": "Caminhada e trote leve",
+                  "descricao": "Aquecimento: 5 min de caminhada a 10:00 min/km | Principal: 6 x 2 min de trote leve com 2 min de caminhada | Desaquecimento: 5 min de caminhada a 10:00 min/km",
+                  "distanciaKm": "3 km",
+                  "duracaoEstimada": "34 min",
+                  "paceSugerido": "Por percepção de esforço",
+                  "observacoes": "Manter esforço confortável"
+                }
+                """;
+
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treinoMisto)),
+                1,
+                List.of("terça-feira")
+        );
+
+        assertEquals(
+                "Corrida e caminhada",
+                plano.getSemanas().get(0).getTreinos().get(1).getTitulo()
+        );
+    }
+
+    @Test
+    void rejeitaDuracaoDiferenteDaSomaDosBlocos() {
+        String treinoComDuracaoIncorreta = """
+                {
+                  "diaSemana": "terça-feira",
+                  "titulo": "Caminhada e trote",
+                  "tipo": "Leve",
+                  "descricao": "Aquecimento: 5 min de caminhada a 10:00 min/km | Principal: 10 min de caminhada, 1 min de trote leve, 2 min de caminhada (repetir 3x) | Desaquecimento: 5 min de caminhada a 10:00 min/km",
+                  "distanciaKm": "3 km",
+                  "duracaoEstimada": "30 min",
+                  "paceSugerido": "Por percepção de esforço",
+                  "observacoes": "Manter esforço confortável"
+                }
+                """;
+
+        GerarTreinoIAException exception = assertThrows(
+                GerarTreinoIAException.class,
+                () -> parser.parsePlanoTreino(
+                        planoJson(semanaJson(1, treinoComDuracaoIncorreta)),
+                        1,
+                        List.of("terça-feira")
+                )
+        );
+
+        assertEquals(
+                "O serviço retornou duração incompatível com a soma dos blocos do treino. Tente gerar novamente.",
+                exception.getMessage()
+        );
+    }
+
+    @Test
+    void rejeitaDuracaoNumericaIncompativelComRepeticaoInterna() {
+        String treinoComDuracaoIncorreta = """
+                {
+                  "diaSemana": "terça-feira",
+                  "titulo": "Corrida e caminhada",
+                  "tipo": "Leve",
+                  "descricao": "Aquecimento: 5 min de trote leve a 8:00 min/km | Principal: 15 min de caminhada + 2 x (1 min de trote leve + 2 min de caminhada) | Desaquecimento: 5 min de caminhada a 9:00 min/km",
+                  "distanciaKm": "3",
+                  "duracaoEstimada": "40",
+                  "paceSugerido": "8:00-9:00",
+                  "observacoes": "Manter esforço confortável"
+                }
+                """;
+
+        GerarTreinoIAException exception = assertThrows(
+                GerarTreinoIAException.class,
+                () -> parser.parsePlanoTreino(
+                        planoJson(semanaJson(1, treinoComDuracaoIncorreta)),
+                        1,
+                        List.of("terça-feira")
+                )
+        );
+
+        assertEquals(
+                "O serviço retornou duração incompatível com a soma dos blocos do treino. Tente gerar novamente.",
+                exception.getMessage()
+        );
+    }
+
+    @Test
+    void rejeitaTreinoSemDistanciaEPaceSugerido() {
+        String treinoSemMetricas = """
+                {
+                  "diaSemana": "terça-feira",
+                  "titulo": "Corrida e caminhada",
+                  "tipo": "Leve",
+                  "descricao": "Aquecimento: 5 min de trote leve a 8:00 min/km | Principal: 20 min de corrida leve | Desaquecimento: 5 min de caminhada a 9:00 min/km",
+                  "distanciaKm": "",
+                  "duracaoEstimada": "30",
+                  "paceSugerido": "",
+                  "observacoes": "Manter esforço confortável"
+                }
+                """;
+
+        GerarTreinoIAException exception = assertThrows(
+                GerarTreinoIAException.class,
+                () -> parser.parsePlanoTreino(
+                        planoJson(semanaJson(1, treinoSemMetricas)),
+                        1,
+                        List.of("terça-feira")
+                )
+        );
+
+        assertEquals(
+                "O serviço retornou treino sem distância ou pace sugerido. Tente gerar novamente.",
+                exception.getMessage()
+        );
+    }
+
+    @Test
     void respostaComCorridaEmDiaNaoSelecionadoRejeitaPlano() {
         String treinos = treinoJson("segunda-feira", "Segunda")
                 + ","
@@ -389,7 +506,7 @@ class PlanoTreinoRespostaParserTest {
                   "tipo": "Corrida continua",
                   "descricao": "Aquecimento: 10 min de trote leve a 6:20 min/km | Principal: 20 min a 6:00 min/km | Desaquecimento: 5 min de caminhada a 6:40 min/km",
                   "distanciaKm": "5 km",
-                  "duracaoEstimada": "30 min",
+                  "duracaoEstimada": "35 min",
                   "paceSugerido": "6:00 min/km",
                   "observacoes": "Manter confortavel"
                 }

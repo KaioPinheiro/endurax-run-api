@@ -1,6 +1,7 @@
 package com.kaio.runtracker.service;
 
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
+import com.kaio.runtracker.ai.prompt.PromptObjetivoFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -10,12 +11,18 @@ import java.time.temporal.ChronoUnit;
 @Service
 public class PlanoTreinoPromptBuilder {
 
+    private final PromptObjetivoFactory promptObjetivoFactory;
+
+    public PlanoTreinoPromptBuilder(
+            PromptObjetivoFactory promptObjetivoFactory) {
+        this.promptObjetivoFactory = promptObjetivoFactory;
+    }
+
     public String criarSystemPrompt() {
         return """
                 Voce e o RunPace Coach, um treinador de corrida de rua experiente, prudente e honesto.
                 Prescreva como um coach real: priorize consistencia, adaptacao progressiva, recuperacao e adequacao ao nivel atual.
                 Nunca prometa que uma meta sera alcancada apenas para agradar o atleta.
-                Para objetivos de maratona, quando o prazo ou a base atual forem insuficientes, entregue um ciclo seguro de construcao de base e explique isso com cuidado no campo alerta.
                 Gere somente JSON valido. O plano nao substitui avaliacao medica nem acompanhamento presencial.
                 """;
     }
@@ -43,33 +50,44 @@ public class PlanoTreinoPromptBuilder {
                 - Quando a prova estiver dentro das quatro semanas do plano, use o período posterior somente para recuperação e retorno progressivo, sem tratá-lo como preparação para uma prova futura.
                 - Nao invente informacoes ausentes.
                 - Ajuste intensidade, volume e complexidade ao perfil, objetivo, ritmo, idade, lesoes e observacoes.
+                - Defina internamente o nivel real do corredor principalmente pela resposta sobre correr 5 km sem caminhar e, quando a resposta for positiva, pelo tempo atual nos 5 km.
+                - Quem ainda nao corre 5 km direto deve ser tratado como iniciante. Para quem corre, use o tempo dos 5 km para estimar de forma prudente se o nivel e iniciante, intermediario ou avancado e calibrar volume, pace, intensidade e complexidade.
+                - A experiencia declarada e apenas contexto complementar e nao deve se sobrepor a capacidade demonstrada nos 5 km.
                 - Retorne apenas JSON valido, sem markdown. 
 
                 Criterios de um plano factivel:
                 - Interprete a faixa de volume semanal como um intervalo de referencia e nao assuma automaticamente o menor valor.
-                - Em objetivos de 10 km, use a faixa completa e um valor representativo coerente com experiencia e ritmo do atleta.
+                %s
                 - Mantenha em geral 75%% a 85%% do tempo ou volume em intensidade confortavel.
                 - Nao coloque sessoes exigentes em dias consecutivos e limite o aumento semanal de carga a aproximadamente 10%%.
                 - Paces, distancias e duracoes devem partir da capacidade atual, nunca apenas da meta desejada.
-
-                Avaliacao de viabilidade obrigatoria para maratona:
-                - Trate 4 a 6 semanas como um ciclo, nao necessariamente como a preparacao completa para qualquer objetivo.
-                - Para maratona, uma meta agressiva ou um prazo curto so pode ser tratada como viavel se os dados mostrarem base recente compativel; na duvida, seja conservador.
-                - Para maratona, se o objetivo exigir adaptacoes maiores do que o prazo e a base atual permitem, nao force um plano de pico nem prescreva carga irreal.
-                - Para maratona insuficiente ou incerta, objetivoPlano e resumo devem dizer que este e um ciclo de construcao de base para aproximar o atleta da meta.
-                - Somente para maratona insuficiente ou incerta, alerta deve explicar com empatia que o ciclo isolado nao garante nem completa a preparacao para a meta e recomendar reavaliacao ao final.
-                - Para qualquer objetivo que nao seja maratona, inclusive 5 km, 10 km e meia maratona, retorne alerta como string vazia.
-                - Para maratona com dados que sustentem o ciclo proposto, retorne alerta como string vazia. Nunca use alerta para prometer resultado.
+                - Se o atleta nunca correu, comece com sessoes alternando caminhada e blocos curtos de trote ou corrida leve, sempre em intensidade confortavel e controlada.
+                - Progrida primeiro o tempo dos blocos de trote, depois reduza gradualmente as pausas caminhando e, somente quando houver adaptacao segura, introduza trechos curtos de corrida continua devagar.
+                - Trechos um pouco mais rapidos so podem aparecer de forma curta, controlada e progressiva depois de demonstrada adaptacao, se idade, lesoes, observacoes e recuperacao permitirem; nunca use esforco maximo nem priorize velocidade sobre seguranca.
+                - Para quem ainda nao corre 5 km direto, prescreva principalmente por tempo e percepcao de esforco, sem tiros, intervalados intensos, treino de ritmo forte ou pace obrigatorio.
+                - Para quem ainda nao corre 5 km direto, use tipo "Leve" nas sessoes comuns e "Longao" somente quando ele for exigido pelo objetivo; use titulo claro como "Corrida e caminhada" enquanto houver alternancia e detalhe no bloco Principal os minutos de trote, corrida e caminhada e a quantidade de repeticoes.
+                - Ao definir qualquer progressao para iniciantes, avalie explicitamente idade e presenca de lesao. Em caso de risco, dor ou duvida, reduza impacto, intensidade e duracao e priorize caminhada, trote leve e recuperacao.
+                - Quando a Experiencia for "Nunca corri", todas as sessoes devem usar caminhada no Aquecimento e caminhada no Desaquecimento; nunca use trote ou corrida nesses dois blocos.
+                - Quando a Experiencia for "Nunca corri", o Principal deve ser dividido em passos distintos e executaveis de trote leve e caminhada, informando a duracao de cada passo e a quantidade de repeticoes.
+                - Nesse caso, escreva o Principal em formato estruturado, por exemplo: "3 x (2 min de trote leve + 3 min de caminhada)". Nao agrupe trote e caminhada em um unico texto sem separar os passos.
+                - Aumente gradualmente os minutos de trote leve ao longo das semanas e reduza a caminhada somente quando isso for seguro. Nao repita a mesma proporcao de trote e caminhada em todas as semanas.
+                - Use idade, lesao e observacoes para decidir a progressao: atletas mais velhos, lesionados, com dor ou com fatores de risco devem ter blocos de trote menores, mais caminhada e progressao mais lenta.
+                - Somente para atleta sem lesao relevante, sem relato de dor e com idade e adaptacao compativeis, as semanas finais podem conter blocos mais longos de trote ou corrida leve continua; mantenha intensidade confortavel e inclua pausas caminhando quando necessario.
+                - Se o atleta corre 5 km direto, use o tempo informado somente como referencia da capacidade atual, sem transformar esse resultado em promessa de desempenho.
+                - Para meia maratona e maratona, considere a maior distancia ja percorrida como limite da base atual; nao prescreva salto brusco de longao a partir dela.
 
                 Regras de texto:
                 - resumo: no maximo 3 frases.
                 - foco: 1 frase.
                 - Para todo treino de corrida, exceto prova/competicao, descricao deve ser um roteiro executavel neste formato exato: "Aquecimento: ... | Principal: ... | Desaquecimento: ...".
-                - Aquecimento deve informar apenas minutos de trote leve e o pace em min/km, sem educativos.
+                - Para Experiencia "Nunca corri", Aquecimento deve informar minutos de caminhada e o pace em min/km. Para os demais corredores, deve informar minutos de trote leve e o pace em min/km. Nunca inclua educativos.
                 - Principal deve informar exatamente o que fazer. Em treinos intervalados, detalhe quantidade de series/repeticoes, metros ou minutos de cada tiro, pace/intensidade e recuperacao entre repeticoes. Em rodagem continua ou longao, detalhe minutos ou quilometros e pace/intensidade.
-                - Desaquecimento deve informar minutos de corrida leve ou caminhada e o pace em min/km.
+                - Para Experiencia "Nunca corri", Desaquecimento deve ser sempre caminhada com minutos e pace em min/km. Para os demais corredores, pode usar corrida leve ou caminhada.
                 - Use valores numericos concretos; nao escreva apenas "aquecer", "fazer tiros" ou "desaquecimento leve".
                 - distanciaKm e duracaoEstimada devem representar a sessao completa, incluindo aquecimento, bloco principal e desaquecimento.
+                - distanciaKm e paceSugerido sao obrigatorios em todo treino de corrida. distanciaKm deve ser numerica e maior que zero; paceSugerido deve trazer uma faixa em min/km ou "Por percepcao de esforco" para iniciantes sem pace seguro.
+                - Calcule duracaoEstimada pela soma exata dos blocos. Em repeticoes, multiplique a soma dos passos pela quantidade de repeticoes e depois adicione aquecimento e desaquecimento.
+                - Exemplo: 5 min de aquecimento + 3 x (10 min de caminhada + 1 min de trote + 2 min de caminhada) + 5 min de desaquecimento totaliza 49 min, nunca 30 min.
                 - observacoes: 1 frase curta com orientacao pratica de execucao, tecnica, hidratacao ou controle de esforco; evite frases genericas.
                 - Descanso e fortalecimento devem usar textos curtos e padronizados.
 
@@ -112,6 +130,9 @@ public class PlanoTreinoPromptBuilder {
 
                 Dados do atleta:
                 - Objetivo: %s
+                - Corre 5 km direto sem caminhar: %s
+                - Tempo atual nos 5 km: %s
+                - Maior distancia ja percorrida: %s
                 - Experiencia: %s
                 - Volume semanal atual: %s
                 - Ritmo confortavel atual: %s
@@ -129,9 +150,13 @@ public class PlanoTreinoPromptBuilder {
                 - Observacoes: %s
                 """.formatted(
                 duracaoSemanas,
+                promptObjetivoFactory.criarPrompt(request).strip(),
                 orientacaoCiclo(request),
                 duracaoSemanas,
                 request.getObjetivo(),
+                respostaSimNao(request.getCorre5KmSemCaminhar()),
+                valor(request.getTempo5Km()),
+                valor(request.getMaiorDistanciaCorrida()),
                 request.getExperienciaCorrida(),
                 request.getVolumeSemanalAtual(),
                 request.getRitmoConfortavel(),
@@ -188,5 +213,12 @@ public class PlanoTreinoPromptBuilder {
 
     private String valor(String valor) {
         return StringUtils.hasText(valor) ? valor.trim() : "Nao informado";
+    }
+
+    private String respostaSimNao(Boolean valor) {
+        if (valor == null) {
+            return "Nao informado";
+        }
+        return valor ? "Sim" : "Nao";
     }
 }

@@ -170,6 +170,21 @@ public class TrainingPlanValidator {
                 errors.add(prefixo + identificador
                         + " possui treino intenso incompatível com lesão ativa.");
             }
+            if (Boolean.FALSE.equals(context.request().getCorre5KmSemCaminhar())
+                    && !descanso
+                    && !prova) {
+                String descricao = normalizar(treino.getDescricao());
+                if (TIPOS_INTENSOS.contains(tipo)) {
+                    errors.add(prefixo + identificador
+                            + " possui treino intenso incompatível com atleta que ainda não corre 5 km direto.");
+                }
+                if (!descricao.contains("caminh")
+                        || (!descricao.contains("trote")
+                                && !descricao.contains("corrida leve"))) {
+                    errors.add(prefixo + identificador
+                            + " deve alternar trote ou corrida leve com caminhada.");
+                }
+            }
             if (!StringUtils.hasText(treino.getPaceSugerido())
                     || !StringUtils.hasText(treino.getDuracaoEstimada())) {
                 warnings.add(prefixo + identificador

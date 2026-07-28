@@ -44,10 +44,16 @@ public class PlanoTreinoReviewPromptBuilder {
                 que existe alerta de prazo insuficiente e que as semanas posteriores
                 contêm recuperação e retorno progressivo, sem treino intenso imediato
                 nem preparação como se a prova ainda não tivesse ocorrido.
+                Se o atleta ainda não corre 5 km direto sem caminhar, confirme que
+                todas as sessões alternam trote ou corrida leve com caminhada e que
+                não existem tiros, ritmo forte ou outro treino intenso.
 
                 Duração definida: %d
                 Dias disponíveis: %s
                 Objetivo: %s
+                Corre 5 km direto sem caminhar: %s
+                Tempo atual nos 5 km: %s
+                Maior distância já percorrida: %s
                 Experiência: %s
                 Volume atual: %s
                 Distância alvo: %s
@@ -60,11 +66,21 @@ public class PlanoTreinoReviewPromptBuilder {
                 context.duracaoSemanas(),
                 context.request().getDiasDisponiveis(),
                 context.request().getObjetivo(),
+                respostaSimNao(context.request().getCorre5KmSemCaminhar()),
+                context.request().getTempo5Km(),
+                context.request().getMaiorDistanciaCorrida(),
                 context.request().getExperienciaCorrida(),
                 context.request().getVolumeSemanalAtual(),
                 context.request().getDistanciaAlvo(),
                 context.request().getDataProva(),
                 Boolean.TRUE.equals(context.request().getPossuiLesao()) ? "Sim" : "Não",
                 objectMapper.writeValueAsString(plano));
+    }
+
+    private String respostaSimNao(Boolean valor) {
+        if (valor == null) {
+            return "Não informado";
+        }
+        return valor ? "Sim" : "Não";
     }
 }

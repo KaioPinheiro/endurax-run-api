@@ -16,7 +16,6 @@ public class GerarTreinoRequestDTO {
     @NotBlank(message = "A experiÃªncia na corrida Ã© obrigatÃ³ria")
     private String experienciaCorrida;
 
-    @NotBlank(message = "O volume semanal atual Ã© obrigatÃ³rio")
     private String volumeSemanalAtual;
 
     @NotBlank(message = "O ritmo confortÃ¡vel atual Ã© obrigatÃ³rio")
@@ -165,6 +164,11 @@ public class GerarTreinoRequestDTO {
                 || temTexto(tempoDesejadoProva);
     }
 
+    @AssertTrue(message = "O volume semanal atual é obrigatório")
+    public boolean isVolumeSemanalAtualValido() {
+        return experienciaSemVolumeSemanal() || temTexto(volumeSemanalAtual);
+    }
+
     public String getDistanciaAlvo() {
         return distanciaAlvo;
     }
@@ -215,6 +219,12 @@ public class GerarTreinoRequestDTO {
 
     private boolean temTexto(String valor) {
         return valor != null && !valor.isBlank();
+    }
+
+    private boolean experienciaSemVolumeSemanal() {
+        return "Nunca corri".equalsIgnoreCase(experienciaCorrida)
+                || "Estou parado".equalsIgnoreCase(experienciaCorrida)
+                || "Estou parado(a)".equalsIgnoreCase(experienciaCorrida);
     }
 }
 
