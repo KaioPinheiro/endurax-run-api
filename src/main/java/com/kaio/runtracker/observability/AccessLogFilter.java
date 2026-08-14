@@ -44,6 +44,15 @@ public class AccessLogFilter extends OncePerRequestFilter {
         MDC.put(MDC_REQUEST_ID, requestId);
         response.setHeader(REQUEST_ID_HEADER, requestId);
 
+        logger.info(
+                "IP_DIAGNOSTIC requestId={} remoteAddr={} xRealIp={} xForwardedFor={} railwayEdge={} railwayRequestId={}",
+                requestId,
+                textoSeguro(request.getRemoteAddr(), 64),
+                textoSeguro(request.getHeader("X-Real-IP"), 256),
+                textoSeguro(request.getHeader("X-Forwarded-For"), 256),
+                textoSeguro(request.getHeader("X-Railway-Edge"), 128),
+                textoSeguro(request.getHeader("X-Railway-Request-Id"), 128));
+
         try {
             filterChain.doFilter(request, response);
         } finally {

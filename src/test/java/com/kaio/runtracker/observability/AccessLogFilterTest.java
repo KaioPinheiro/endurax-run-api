@@ -18,7 +18,11 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import com.kaio.runtracker.entity.User;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -101,6 +105,48 @@ class AccessLogFilterTest {
         executar(request, new MockHttpServletResponse(), 200);
 
         assertThat(log()).contains("ip=203.0.113.10").doesNotContain("198.51.100.99");
+    }
+
+    @Test
+    void logDiagnosticoRegistraSomenteCamposDeRedeSanitizados() throws Exception {
+        MockHttpServletRequest request = requisicao();
+        request.addHeader("X-Real-IP", "198.51.100.10\r\nINJETADO");
+        request.addHeader("X-Forwarded-For", "198.51.100.10, 100.64.0.2");
+        request.addHeader("X-Railway-Edge", "edge-test");
+        request.addHeader("X-Railway-Request-Id", "railway-123");
+        request.addHeader("Authorization", "Bearer segredo-que-nao-pode-aparecer");
+
+        executar(request, new MockHttpServletResponse(), 200);
+
+        String diagnostico = appender.list.stream()
+                .map(ILoggingEvent::getFormattedMessage)
+                .filter(mensagem -> mensagem.startsWith("IP_DIAGNOSTIC"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(diagnostico)
+                .contains("remoteAddr=203.0.113.10")
+                .contains("xRealIp=198.51.100.10  INJETADO")
+                .contains("xForwardedFor=198.51.100.10, 100.64.0.2")
+                .contains("railwayEdge=edge-test")
+                .contains("railwayRequestId=railway-123")
+                .doesNotContain("segredo-que-nao-pode-aparecer", "\r", "\n");
+    }
+
+    @Test
+    void configuracaoMantemForwardedHeadersDesabilitadosPorPadrao() throws Exception {
+        Properties properties = new Properties();
+        try (InputStream input = Files.newInputStream(
+                Path.of("src/main/resources/application.properties"))) {
+            properties.load(input);
+        }
+
+        assertThat(properties.getProperty("server.forward-headers-strategy"))
+                .isEqualTo("${SERVER_FORWARD_HEADERS_STRATEGY:NONE}");
+        assertThat(properties.getProperty("server.tomcat.remoteip.remote-ip-header"))
+                .isEqualTo("x-real-ip");
+        assertThat(properties.getProperty("server.tomcat.remoteip.protocol-header"))
+                .isEqualTo("x-forwarded-proto");
+        assertThat(properties).doesNotContainKey("server.tomcat.remoteip.internal-proxies");
     }
 
     @Test
