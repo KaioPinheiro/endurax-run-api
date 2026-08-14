@@ -41,11 +41,10 @@ class PromptObjetivoFactoryTest {
     }
 
     @Test
-    void sub30CincoKmPossuiMetodoIndependenteSemInventarNovaRegra() {
+    void performanceCincoKmUsaPromptParametrizadoBase() {
         String prompt = factory.criarPrompt(
-                request("Sub 30 nos 5 km", "5 km"));
+                request("Melhorar tempo nos 5 km", "5 km"));
 
-        assertEquals(factory.criarPromptSub30CincoKm(), prompt);
         assertEquals(factory.criarPromptBase(), prompt);
     }
 

@@ -41,12 +41,22 @@ public class PagamentoController {
 
     @GetMapping("/{id}/status")
     public PagamentoStatusResponseDTO consultarStatus(@PathVariable Long id) {
-        return service.consultarStatus(id);
+        PagamentoStatusResponseDTO status = service.consultarStatus(id);
+        Long pagamentoParaGerar = service.pagamentoPendenteDeGeracao(id);
+        if (pagamentoParaGerar != null) {
+            geracaoAssincronaService.iniciar(pagamentoParaGerar);
+        }
+        return status;
     }
 
     @GetMapping("/{id}/resultado")
     public PagamentoResultadoResponseDTO consultarResultado(@PathVariable Long id) {
         return service.consultarResultado(id);
+    }
+
+    @GetMapping("/solicitacao/{solicitacaoPlanoId}")
+    public PagamentoResultadoResponseDTO consultarPorSolicitacao(@PathVariable Long solicitacaoPlanoId) {
+        return service.consultarPorSolicitacao(solicitacaoPlanoId);
     }
 
     @PostMapping("/{id}/geracao/tentar-novamente")

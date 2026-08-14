@@ -118,6 +118,12 @@ public class PagamentoService {
         Pagamento pagamento = repository.findById(id).orElseThrow(() ->
                 new PagamentoException(HttpStatus.NOT_FOUND, "Pagamento não encontrado."));
 
+        if (pagamento.getStatus() == PagamentoStatus.APPROVED) {
+            logger.info("Reconciliação ignorada: APPROVED é terminal, pagamentoId={}, orderId={}",
+                    pagamento.getId(), pagamento.getOrderExternalId());
+            return respostaStatus(pagamento);
+        }
+
         MercadoPagoOrderResponse order = mercadoPagoClient.consultarOrder(pagamento.getOrderExternalId());
         if (!StringUtils.hasText(order.id())) {
             throw new PagamentoException(HttpStatus.BAD_GATEWAY, "O Mercado Pago retornou uma order inválida.");
@@ -166,9 +172,11 @@ public class PagamentoService {
                 pagamento.getId(), order.id());
 
         if (pagamento.getStatus() == PagamentoStatus.APPROVED) {
-            logger.info("Webhook Mercado Pago ignorado por duplicidade: pagamentoId={}, orderId={}, status={}",
-                    pagamento.getId(), order.id(), pagamento.getStatus());
-            return null;
+            Long garantirGeracao = idParaGarantirGeracao(pagamento);
+            logger.info("Webhook Mercado Pago sem novo estado financeiro: pagamentoId={}, orderId={}, "
+                            + "status={}, garantirGeracao={}",
+                    pagamento.getId(), order.id(), pagamento.getStatus(), garantirGeracao != null);
+            return garantirGeracao;
         }
 
         PagamentoStatus statusAnterior = pagamento.getStatus();
@@ -189,25 +197,53 @@ public class PagamentoService {
         repository.save(pagamento);
         logger.info("Webhook Mercado Pago: status atualizado, pagamentoId={}, orderId={}, statusAnterior={}, novoStatus={}",
                 pagamento.getId(), order.id(), statusAnterior, novoStatus);
-        boolean transicaoAprovada = (statusAnterior == PagamentoStatus.PENDING
-                || statusAnterior == PagamentoStatus.PROCESSING)
-                && novoStatus == PagamentoStatus.APPROVED;
-        if (transicaoAprovada) {
+        Long garantirGeracao = idParaGarantirGeracao(pagamento);
+        if (garantirGeracao != null) {
             logger.info("Pagamento aprovado; geração automática liberada: pagamentoId={}", pagamento.getId());
-            return pagamento.getId();
         }
-        return null;
+        return garantirGeracao;
+    }
+
+    /**
+     * Devolve o id do pagamento quando a geração precisa ser garantida: pagamento aprovado
+     * cuja geração nunca saiu de PENDING. Webhook e reconciliação usam o mesmo critério, e a
+     * reserva com lock pessimista em GeracaoPlanoTransacaoService continua sendo a trava final
+     * contra geração duplicada.
+     */
+    public Long pagamentoPendenteDeGeracao(Long pagamentoId) {
+        return repository.findById(pagamentoId)
+                .map(this::idParaGarantirGeracao)
+                .orElse(null);
+    }
+
+    private Long idParaGarantirGeracao(Pagamento pagamento) {
+        boolean geracaoNuncaIniciada = pagamento.getStatus() == PagamentoStatus.APPROVED
+                && pagamento.getGeracaoStatus() == GeracaoPlanoStatus.PENDING
+                && pagamento.getTrainingPlan() == null;
+        return geracaoNuncaIniciada ? pagamento.getId() : null;
     }
 
     public PagamentoResultadoResponseDTO consultarResultado(Long pagamentoId) {
         Pagamento pagamento = repository.findById(pagamentoId).orElseThrow(() ->
                 new PagamentoException(HttpStatus.NOT_FOUND, "Pagamento não encontrado."));
+        return respostaResultado(pagamento);
+    }
+
+    public PagamentoResultadoResponseDTO consultarPorSolicitacao(Long solicitacaoPlanoId) {
+        Pagamento pagamento = repository.findBySolicitacaoPlanoId(solicitacaoPlanoId).orElseThrow(() ->
+                new PagamentoException(HttpStatus.NOT_FOUND, "Pagamento não encontrado."));
+        return respostaResultado(pagamento);
+    }
+
+    private PagamentoResultadoResponseDTO respostaResultado(Pagamento pagamento) {
         Long planoId = pagamento.getTrainingPlan() != null ? pagamento.getTrainingPlan().getId() : null;
         String mensagem = pagamento.getGeracaoStatus() == GeracaoPlanoStatus.FAILED
                 ? "Não foi possível gerar o plano neste momento."
                 : null;
         return new PagamentoResultadoResponseDTO(
-                pagamento.getStatus(), pagamento.getGeracaoStatus(), planoId, mensagem);
+                pagamento.getId(), pagamento.getStatus(), pagamento.getGeracaoStatus(), planoId, mensagem,
+                pagamento.getValor(), pagamento.getPixCopiaCola(), pagamento.getQrCodeBase64(),
+                pagamento.getTicketUrl(), pagamento.getDataExpiracao());
     }
 
     private SolicitacaoPlano buscarSolicitacao(Long solicitacaoPlanoId, String emailNormalizado) {

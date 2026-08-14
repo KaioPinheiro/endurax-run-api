@@ -41,8 +41,6 @@ public class AuthController {
         System.out.println("User encontrado: " + (user != null));
 
         if (user != null) {
-        System.out.println("Senha digitada: " + dto.getSenha());
-        System.out.println("Senha banco: " + user.getSenha());
         System.out.println("Matches: " + passwordEncoder.matches(dto.getSenha(), user.getSenha()));
 }
 

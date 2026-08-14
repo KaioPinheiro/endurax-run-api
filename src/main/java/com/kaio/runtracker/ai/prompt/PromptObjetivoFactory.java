@@ -18,9 +18,6 @@ public class PromptObjetivoFactory {
         if (ehMaratona(objetivo, distancia)) {
             return criarPromptPrimeiraMaratona();
         }
-        if (objetivo.contains("sub 30") && ehCincoKm(objetivo, distancia)) {
-            return criarPromptSub30CincoKm();
-        }
         if (ehDezKm(objetivo, distancia)) {
             return criarPrompt10Km();
         }
@@ -54,20 +51,11 @@ public class PromptObjetivoFactory {
                 """;
     }
 
-    public String criarPromptSub30CincoKm() {
-        return criarPromptBase();
-    }
-
     private boolean ehMaratona(String objetivo, String distancia) {
         String texto = objetivo + " " + distancia;
         return (texto.contains("maratona")
                 && !texto.contains("meia maratona"))
                 || texto.matches(".*\\b42\\s*(?:km|k)\\b.*");
-    }
-
-    private boolean ehCincoKm(String objetivo, String distancia) {
-        return (objetivo + " " + distancia)
-                .matches(".*\\b5\\s*(?:km|k)\\b.*");
     }
 
     private boolean ehDezKm(String objetivo, String distancia) {

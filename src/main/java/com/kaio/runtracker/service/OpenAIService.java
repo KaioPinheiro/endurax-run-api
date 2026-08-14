@@ -226,7 +226,7 @@ public class OpenAIService {
                 || "SUA_CHAVE_OPENAI".equals(apiKey.trim())) {
             throw new GerarTreinoIAException(
                     SERVICE_UNAVAILABLE,
-                    "O serviço de geração ainda não foi configurado neste ambiente.");
+                    "A integração OpenAI não está configurada neste ambiente: defina OPENAI_API_KEY.");
         }
         if (!StringUtils.hasText(model)) {
             throw new GerarTreinoIAException(

@@ -12,15 +12,22 @@ import lombok.Setter;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 
 @Getter
 @Setter
 @NoArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class GerarPlanoTreinoRequestDTO {
+    private static final Set<String> OBJETIVOS_PERMITIDOS = Set.of(
+            "Começar a correr", "Melhorar condicionamento", "Emagrecer",
+            "Primeiros 5 km", "Primeiros 10 km", "Primeira Meia Maratona", "Primeira Maratona",
+            "Melhorar tempo nos 5 km", "Melhorar tempo nos 10 km",
+            "Melhorar tempo na Meia Maratona", "Melhorar tempo na Maratona");
 
     @NotBlank(message = "O objetivo é obrigatório")
     private String objetivo;
+    private String tempoAtual;
 
     private Boolean corre5KmSemCaminhar;
     private String tempo5Km;
@@ -84,6 +91,39 @@ public class GerarPlanoTreinoRequestDTO {
     @AssertTrue(message = "O volume semanal atual é obrigatório")
     public boolean isVolumeSemanalAtualValido() {
         return experienciaSemVolumeSemanal() || temTexto(volumeSemanalAtual);
+    }
+
+    @AssertTrue(message = "O objetivo informado não é permitido")
+    public boolean isObjetivoValido() {
+        return objetivo == null || OBJETIVOS_PERMITIDOS.contains(objetivo);
+    }
+
+    @AssertTrue(message = "Objetivos de performance exigem tempo atual e desejado válidos, com melhora")
+    public boolean isTemposPerformanceValidos() {
+        if (!ehObjetivoPerformance()) return !temTexto(tempoAtual);
+        Long atual = tempoEmSegundos(tempoAtual);
+        Long desejado = tempoEmSegundos(tempoDesejado);
+        return atual != null && desejado != null && desejado < atual;
+    }
+
+    public boolean ehObjetivoPerformance() {
+        return temTexto(objetivo) && objetivo.startsWith("Melhorar tempo ");
+    }
+
+    private Long tempoEmSegundos(String tempo) {
+        if (!temTexto(tempo)) return null;
+        String[] partes = tempo.trim().split(":");
+        boolean maratona = objetivo.endsWith("na Maratona");
+        if (partes.length != (maratona ? 3 : 2)) return null;
+        try {
+            long primeiro = Long.parseLong(partes[0]);
+            long minutos = Long.parseLong(partes[partes.length - 2]);
+            long segundos = Long.parseLong(partes[partes.length - 1]);
+            if (primeiro <= 0 || segundos > 59 || (maratona && minutos > 59)) return null;
+            return maratona ? primeiro * 3600 + minutos * 60 + segundos : primeiro * 60 + segundos;
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private boolean experienciaSemVolumeSemanal() {

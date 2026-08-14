@@ -211,11 +211,15 @@ class PagamentoServiceTest {
     }
 
     @Test
-    void webhookDuplicadoNaoAlteraPagamentoAprovado() {
+    void webhookDuplicadoNaoAlteraPagamentoAprovadoNemRepeteGeracaoConcluida() {
         Pagamento pagamento = pagamentoPendente();
         pagamento.setStatus(PagamentoStatus.APPROVED);
         pagamento.setStatusDetail("accredited");
         pagamento.setPagoEm(LocalDateTime.of(2026, 7, 20, 11, 45));
+        pagamento.setGeracaoStatus(GeracaoPlanoStatus.COMPLETED);
+        TrainingPlan plano = new TrainingPlan();
+        plano.setId(10L);
+        pagamento.setTrainingPlan(plano);
         when(client.consultarOrder("ORD123")).thenReturn(orderAprovada());
         when(repository.findByExternalReference("EXT123")).thenReturn(Optional.of(pagamento));
 
@@ -224,6 +228,98 @@ class PagamentoServiceTest {
         assertEquals(LocalDateTime.of(2026, 7, 20, 11, 45), pagamento.getPagoEm());
         assertNull(resultado);
         verify(repository, never()).save(any());
+    }
+
+    @Test
+    void webhookDepoisDaReconciliacaoGaranteGeracaoSemRegravarEstadoFinanceiro() {
+        Pagamento pagamento = pagamentoPendente();
+        pagamento.setStatus(PagamentoStatus.APPROVED);
+        pagamento.setStatusDetail("accredited");
+        pagamento.setPagoEm(LocalDateTime.of(2026, 7, 20, 11, 45));
+        pagamento.setGeracaoStatus(GeracaoPlanoStatus.PENDING);
+        when(client.consultarOrder("ORD123")).thenReturn(orderAprovada());
+        when(repository.findByExternalReference("EXT123")).thenReturn(Optional.of(pagamento));
+
+        Long resultado = service.processarWebhookOrder("ORD123");
+
+        assertEquals(1L, resultado);
+        assertEquals(PagamentoStatus.APPROVED, pagamento.getStatus());
+        assertEquals(LocalDateTime.of(2026, 7, 20, 11, 45), pagamento.getPagoEm());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void webhookNaoRepeteGeracaoQuandoJaEstaProcessando() {
+        Pagamento pagamento = pagamentoPendente();
+        pagamento.setStatus(PagamentoStatus.APPROVED);
+        pagamento.setStatusDetail("accredited");
+        pagamento.setGeracaoStatus(GeracaoPlanoStatus.PROCESSING);
+        when(client.consultarOrder("ORD123")).thenReturn(orderAprovada());
+        when(repository.findByExternalReference("EXT123")).thenReturn(Optional.of(pagamento));
+
+        assertNull(service.processarWebhookOrder("ORD123"));
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void reconciliacaoDetectaAprovacaoESinalizaGeracao() {
+        Pagamento pagamento = pagamentoPendente();
+        when(repository.findById(1L)).thenReturn(Optional.of(pagamento));
+        when(client.consultarOrder("ORD123")).thenReturn(orderAprovada());
+        when(repository.save(pagamento)).thenReturn(pagamento);
+
+        PagamentoStatusResponseDTO status = service.consultarStatus(1L);
+
+        assertEquals(PagamentoStatus.APPROVED, status.status());
+        assertEquals(GeracaoPlanoStatus.PENDING, pagamento.getGeracaoStatus());
+        assertEquals(1L, service.pagamentoPendenteDeGeracao(1L));
+    }
+
+    @Test
+    void reconciliacaoNaoSinalizaGeracaoQuandoJaFoiIniciada() {
+        Pagamento pagamento = pagamentoPendente();
+        pagamento.setStatus(PagamentoStatus.APPROVED);
+        pagamento.setGeracaoStatus(GeracaoPlanoStatus.PROCESSING);
+        when(repository.findById(1L)).thenReturn(Optional.of(pagamento));
+
+        assertNull(service.pagamentoPendenteDeGeracao(1L));
+    }
+
+    @Test
+    void pagamentoAprovadoNaoRegrideParaExpiradoNaReconciliacao() {
+        Pagamento pagamento = pagamentoPendente();
+        pagamento.setStatus(PagamentoStatus.APPROVED);
+        pagamento.setStatusDetail("accredited");
+        pagamento.setPagoEm(LocalDateTime.of(2026, 7, 20, 11, 45));
+        pagamento.setDataExpiracao(LocalDateTime.of(2026, 7, 20, 11, 0));
+        when(repository.findById(1L)).thenReturn(Optional.of(pagamento));
+
+        PagamentoStatusResponseDTO status = service.consultarStatus(1L);
+
+        assertEquals(PagamentoStatus.APPROVED, status.status());
+        assertTrue(status.pago());
+        assertFalse(status.expirado());
+        verify(client, never()).consultarOrder(any());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void resultadoPersistidoEhLidoMesmoComMercadoPagoIndisponivel() {
+        Pagamento pagamento = pagamentoPendente();
+        pagamento.setStatus(PagamentoStatus.APPROVED);
+        pagamento.setGeracaoStatus(GeracaoPlanoStatus.COMPLETED);
+        TrainingPlan plano = new TrainingPlan();
+        plano.setId(10L);
+        pagamento.setTrainingPlan(plano);
+        when(repository.findById(1L)).thenReturn(Optional.of(pagamento));
+        when(client.consultarOrder(any())).thenThrow(new PagamentoException(
+                org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "Provedor indisponível"));
+
+        var resultado = service.consultarResultado(1L);
+
+        assertEquals(GeracaoPlanoStatus.COMPLETED, resultado.geracaoStatus());
+        assertEquals(10L, resultado.planoId());
+        verify(client, never()).consultarOrder(any());
     }
 
     @Test
@@ -260,9 +356,27 @@ class PagamentoServiceTest {
 
         var resultado = service.consultarResultado(1L);
 
+        assertEquals(1L, resultado.pagamentoId());
         assertEquals(PagamentoStatus.PENDING, resultado.pagamentoStatus());
         assertEquals(GeracaoPlanoStatus.PENDING, resultado.geracaoStatus());
         assertEquals(null, resultado.planoId());
+        assertEquals(new BigDecimal("12.90"), resultado.valor());
+        assertEquals("QR-CODE", resultado.pixCopiaCola());
+        assertEquals("BASE64", resultado.qrCodeBase64());
+        assertEquals(LocalDateTime.of(2026, 7, 20, 13, 0), resultado.dataExpiracao());
+    }
+
+    @Test
+    void recuperaPagamentoPelaSolicitacaoComDadosDoPix() {
+        Pagamento pagamento = pagamentoPendente();
+        when(repository.findBySolicitacaoPlanoId(7L)).thenReturn(Optional.of(pagamento));
+
+        var resultado = service.consultarPorSolicitacao(7L);
+
+        assertEquals(1L, resultado.pagamentoId());
+        assertEquals("QR-CODE", resultado.pixCopiaCola());
+        assertEquals("BASE64", resultado.qrCodeBase64());
+        assertEquals(new BigDecimal("12.90"), resultado.valor());
     }
 
     @Test
@@ -333,6 +447,10 @@ class PagamentoServiceTest {
         pagamento.setOrderExternalId("ORD123");
         pagamento.setStatus(PagamentoStatus.PENDING);
         pagamento.setStatusDetail("waiting_transfer");
+        pagamento.setValor(new BigDecimal("12.90"));
+        pagamento.setPixCopiaCola("QR-CODE");
+        pagamento.setQrCodeBase64("BASE64");
+        pagamento.setTicketUrl("https://ticket");
         pagamento.setDataExpiracao(LocalDateTime.of(2026, 7, 20, 13, 0));
         return pagamento;
     }

@@ -130,6 +130,9 @@ public class PlanoTreinoPromptBuilder {
 
                 Dados do atleta:
                 - Objetivo: %s
+                - Distancia da meta de performance: %s
+                - Tempo atual na distancia alvo: %s
+                - Tempo desejado na distancia alvo: %s
                 - Corre 5 km direto sem caminhar: %s
                 - Tempo atual nos 5 km: %s
                 - Maior distancia ja percorrida: %s
@@ -154,6 +157,9 @@ public class PlanoTreinoPromptBuilder {
                 orientacaoCiclo(request),
                 duracaoSemanas,
                 request.getObjetivo(),
+                distanciaPerformance(request),
+                valor(request.getTempoAtual()),
+                request.ehObjetivoPerformance() ? valor(request.getTempoDesejado()) : "Nao se aplica",
                 respostaSimNao(request.getCorre5KmSemCaminhar()),
                 valor(request.getTempo5Km()),
                 valor(request.getMaiorDistanciaCorrida()),
@@ -213,6 +219,15 @@ public class PlanoTreinoPromptBuilder {
 
     private String valor(String valor) {
         return StringUtils.hasText(valor) ? valor.trim() : "Nao informado";
+    }
+
+    private String distanciaPerformance(GerarPlanoTreinoRequestDTO request) {
+        if (!request.ehObjetivoPerformance()) return "Nao se aplica";
+        String objetivo = request.getObjetivo();
+        if (objetivo.contains("5 km")) return "5 km";
+        if (objetivo.contains("10 km")) return "10 km";
+        if (objetivo.contains("Meia Maratona")) return "21 km (Meia Maratona)";
+        return "42 km (Maratona)";
     }
 
     private String respostaSimNao(Boolean valor) {

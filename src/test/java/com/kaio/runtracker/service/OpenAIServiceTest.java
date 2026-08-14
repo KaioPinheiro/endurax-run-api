@@ -84,7 +84,7 @@ class OpenAIServiceTest {
         assertThatThrownBy(() ->
                 serviceSemChave.enviarPromptPlanoTreino("sistema", "usuario", 4))
                 .isInstanceOf(GerarTreinoIAException.class)
-                .hasMessageContaining("ainda não foi configurado");
+                .hasMessageContaining("OPENAI_API_KEY");
     }
 
     private void responder(String body) {

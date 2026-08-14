@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.Lock;
 import java.util.Optional;
 
 public interface PagamentoRepository extends JpaRepository<Pagamento, Long> {
+    Optional<Pagamento> findBySolicitacaoPlanoId(Long solicitacaoPlanoId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Pagamento> findByExternalReference(String externalReference);
 

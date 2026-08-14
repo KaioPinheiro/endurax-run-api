@@ -41,6 +41,8 @@ class PlanoTreinoPromptBuilderTest {
     void promptDeDezKmUsaFaixaCompletaESemAlerta() {
         GerarPlanoTreinoRequestDTO request = new GerarPlanoTreinoRequestDTO();
         request.setObjetivo("Melhorar tempo nos 10 km");
+        request.setTempoAtual("52:10");
+        request.setTempoDesejado("49:30");
         request.setExperienciaCorrida("1 a 3 anos");
         request.setVolumeSemanalAtual("20-40 km");
         request.setRitmoConfortavel("5:30-6:00 min/km");
@@ -55,6 +57,9 @@ class PlanoTreinoPromptBuilderTest {
         assertTrue(prompt.contains("Em objetivos de 10 km, use a faixa completa"));
         assertTrue(prompt.contains("nao assuma automaticamente o menor valor"));
         assertTrue(prompt.contains("inclusive 5 km, 10 km e meia maratona, retorne alerta como string vazia"));
+        assertTrue(prompt.contains("Distancia da meta de performance: 10 km"));
+        assertTrue(prompt.contains("Tempo atual na distancia alvo: 52:10"));
+        assertTrue(prompt.contains("Tempo desejado na distancia alvo: 49:30"));
     }
 
     @Test

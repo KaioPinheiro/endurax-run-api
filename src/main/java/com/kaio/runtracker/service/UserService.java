@@ -75,7 +75,7 @@ public class UserService {
 
         user.setNome(dto.getNome());
         user.setEmail(dto.getEmail());
-        user.setSenha(dto.getSenha());
+        user.setSenha(passwordEncoder.encode(dto.getSenha()));
         user.setRole(dto.getRole());
 
         if (dto.getTrainingPlanId() != null) {
