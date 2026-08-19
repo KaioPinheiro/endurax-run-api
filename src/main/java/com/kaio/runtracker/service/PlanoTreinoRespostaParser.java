@@ -29,6 +29,8 @@ public class PlanoTreinoRespostaParser {
             LoggerFactory.getLogger(PlanoTreinoRespostaParser.class);
     private static final Pattern MINUTOS_PATTERN =
             Pattern.compile("\\b(\\d+)\\s*min(?:uto)?s?\\b(?!\\s*/\\s*km)");
+    private static final Pattern DISTANCIA_PATTERN = Pattern.compile(
+            "\\b\\d+(?:[.,]\\d+)?\\s*(?:m|km|metros?|quilometros?)\\b");
 
     private static final List<String> DIAS_SEMANA = List.of(
             "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira",
@@ -135,6 +137,12 @@ public class PlanoTreinoRespostaParser {
                 "Plano completo IA: quantidade de semanas retornada antes da normalização={}",
                 quantidadeOriginal
         );
+        if (quantidadeOriginal > duracaoEsperada) {
+            logger.warn(
+                    "Plano completo IA: quantidade de semanas incompatível: informada={}, esperada={}",
+                    quantidadeOriginal, duracaoEsperada);
+            throw erroFormato("O serviço retornou quantidade de semanas diferente da solicitada.");
+        }
 
         Map<Integer, SemanaPlanoIAResponseDTO> semanasPorNumero = new LinkedHashMap<>();
         if (plano.getSemanas() != null) {
@@ -360,14 +368,13 @@ public class PlanoTreinoRespostaParser {
         long intervalados = corridas.stream().filter(this::ehIntervalado).count();
         if (intervalados > 1) {
             logger.warn("Plano completo IA: excesso de intervalados em {}: {}", contexto, intervalados);
-            throw erroFormato("O serviço retornou mais de um treino intervalado na mesma semana.");
         }
 
         boolean possuiEducativos = corridas.stream()
                 .map(this::textoCompleto)
                 .anyMatch(texto -> texto.contains("educativo"));
         if (possuiEducativos) {
-            throw erroFormato("O serviço retornou educativos, que não foram solicitados.");
+            logger.warn("Plano completo IA: educativos detectados em {}; acao=PLANO_MANTIDO", contexto);
         }
 
         if (StringUtils.hasText(diaLongao)) {
@@ -376,7 +383,9 @@ public class PlanoTreinoRespostaParser {
                     .anyMatch(treino -> normalizarDia(treino.getDiaSemana())
                             .equals(diaLongaoNormalizado) && ehLongao(treino));
             if (!longaoNoDiaEscolhido) {
-                throw erroFormato("O serviço não colocou o longão no dia escolhido.");
+                logger.warn(
+                        "Plano completo IA: longao nao reconhecido no dia escolhido em {}; acao=PLANO_MANTIDO",
+                        contexto);
             }
         }
     }
@@ -410,7 +419,7 @@ public class PlanoTreinoRespostaParser {
         boolean possuiEtapas = descricao.contains("aquecimento:")
                 && descricao.contains("principal:")
                 && descricao.contains("desaquecimento:");
-        boolean possuiValorNumerico = descricao.matches(".*\\d+.*");
+        boolean possuiValorNumerico = descricao.matches("(?s).*\\d+.*");
         boolean possuiPaceNoAquecimento = trechoEntre(
                 descricao,
                 "aquecimento:",
@@ -421,18 +430,23 @@ public class PlanoTreinoRespostaParser {
                 "desaquecimento:"
         ).contains("min/km");
 
-        if (!possuiEtapas
-                || !possuiValorNumerico
-                || !possuiPaceNoAquecimento
-                || !possuiPaceNoDesaquecimento) {
+        if (!possuiEtapas) {
             logger.warn(
                     "Plano completo IA: sessão sem detalhamento em {}: dia={}",
                     contexto,
                     treino.getDiaSemana()
             );
             throw erroFormato(
-                    "O serviço retornou treino sem aquecimento, bloco principal e desaquecimento detalhados com pace."
+                    "O serviço retornou treino sem aquecimento, bloco principal e desaquecimento."
             );
+        }
+
+        if (!possuiValorNumerico || !possuiPaceNoAquecimento || !possuiPaceNoDesaquecimento) {
+            logger.warn(
+                    "Plano completo IA: detalhamento parcial em {}: dia={}, possuiNumero={}, "
+                            + "possuiPaceAquecimento={}, possuiPaceDesaquecimento={}; acao=PLANO_MANTIDO",
+                    contexto, treino.getDiaSemana(), possuiValorNumerico,
+                    possuiPaceNoAquecimento, possuiPaceNoDesaquecimento);
         }
 
         if (!temDistanciaValida(treino.getDistanciaKm())
@@ -443,9 +457,6 @@ public class PlanoTreinoRespostaParser {
                     treino.getDiaSemana(),
                     temDistanciaValida(treino.getDistanciaKm()),
                     temPaceSugerido(treino.getPaceSugerido())
-            );
-            throw erroFormato(
-                    "O serviço retornou treino sem distância ou pace sugerido."
             );
         }
 
@@ -466,32 +477,40 @@ public class PlanoTreinoRespostaParser {
             String descricao,
             String contexto) {
         Integer duracaoInformada = extrairDuracaoInformada(treino.getDuracaoEstimada());
-        Integer aquecimento = somarMinutos(trechoEntre(
-                descricao, "aquecimento:", "principal:"));
-        Integer principal = calcularMinutosPrincipal(trechoEntre(
-                descricao, "principal:", "desaquecimento:"));
-        Integer desaquecimento = somarMinutos(trechoApos(
-                descricao, "desaquecimento:"));
+        try {
+            if (possuiFormatoTemporalNaoSuportado(descricao)) {
+                throw new DuracaoIncalculavelException(
+                        MotivoDuracao.FORMATO_DURACAO_NAO_SUPORTADO);
+            }
+            Integer aquecimento = somarMinutos(trechoEntre(
+                    descricao, "aquecimento:", "principal:"));
+            if (aquecimento == null) {
+                throw new DuracaoIncalculavelException(
+                        MotivoDuracao.AQUECIMENTO_SEM_MINUTOS);
+            }
+            Integer principal = calcularMinutosPrincipal(trechoEntre(
+                    descricao, "principal:", "desaquecimento:"));
+            Integer desaquecimento = somarMinutos(trechoApos(
+                    descricao, "desaquecimento:"));
+            if (desaquecimento == null) {
+                throw new DuracaoIncalculavelException(
+                        MotivoDuracao.DESAQUECIMENTO_SEM_MINUTOS);
+            }
 
-        if (duracaoInformada == null
-                || aquecimento == null
-                || principal == null
-                || desaquecimento == null) {
-            return;
-        }
-
-        int duracaoCalculada = aquecimento + principal + desaquecimento;
-        if (duracaoInformada != duracaoCalculada) {
+            int duracaoCalculada = aquecimento + principal + desaquecimento;
+            if (duracaoInformada == null || duracaoInformada != duracaoCalculada) {
+                logger.warn(
+                        "Plano completo IA: duracao normalizada em {}: dia={}, informada={} min, calculada={} min",
+                        contexto, treino.getDiaSemana(), duracaoInformada, duracaoCalculada);
+            }
+            treino.setDuracaoEstimada(duracaoCalculada + " min");
+        } catch (DuracaoIncalculavelException exception) {
             logger.warn(
-                    "Plano completo IA: duracao inconsistente em {}: dia={}, informada={} min, calculada={} min",
-                    contexto,
-                    treino.getDiaSemana(),
-                    duracaoInformada,
-                    duracaoCalculada
-            );
-            throw erroFormato(
-                    "O serviço retornou duração incompatível com a soma dos blocos do treino."
-            );
+                    "Plano completo IA: durationFallback em {}: dia={}, motivo={}, acao={}",
+                    contexto, treino.getDiaSemana(), exception.motivo,
+                    StringUtils.hasText(treino.getDuracaoEstimada())
+                            ? "USANDO_DURACAO_INFORMADA"
+                            : "SEM_ESTIMATIVA");
         }
     }
 
@@ -507,51 +526,145 @@ public class PlanoTreinoRespostaParser {
     }
 
     private Integer calcularMinutosPrincipal(String principal) {
-        Integer soma = somarMinutos(principal);
-        if (soma == null) {
-            return null;
+        principal = principal.replaceFirst("\\|\\s*$", "").trim();
+        if (possuiDistanciaSemDuracaoExplicita(principal)) {
+            throw new DuracaoIncalculavelException(
+                    MotivoDuracao.PRINCIPAL_DISTANCIA_SEM_DURACAO);
         }
 
-        Matcher repetirNoFinal = Pattern.compile(
-                "\\(\\s*repetir\\s+(\\d+)\\s*x\\s*\\)\\s*\\|?\\s*$",
+        Integer soma = somarMinutos(principal);
+        if (soma == null) {
+            throw new DuracaoIncalculavelException(
+                    MotivoDuracao.PRINCIPAL_SEM_MINUTOS);
+        }
+
+        if (principal.matches(".*\\brepetir\\s+\\d+\\s*x\\b.*")) {
+            throw new DuracaoIncalculavelException(
+                    MotivoDuracao.PRINCIPAL_REPETICAO_NAO_RECONHECIDA);
+        }
+
+        Matcher seriesComRepeticoes = Pattern.compile(
+                "^\\s*(\\d+)\\s*series?\\s+de\\s+(\\d+)\\s*x\\s*\\(([^()]*)\\)"
+                        + "(?:\\s*,?\\s*com\\s+(\\d+)\\s*min(?:uto)?s?\\s+de\\s+"
+                        + "recuperacao\\s+entre\\s+series)?\\s*$",
                 Pattern.CASE_INSENSITIVE
         ).matcher(principal);
-        if (repetirNoFinal.find()) {
-            return soma * Integer.parseInt(repetirNoFinal.group(1));
+        if (seriesComRepeticoes.matches()) {
+            int series = Integer.parseInt(seriesComRepeticoes.group(1));
+            int repeticoes = Integer.parseInt(seriesComRepeticoes.group(2));
+            Integer minutos = calcularRepeticoes(repeticoes, seriesComRepeticoes.group(3));
+            int minutosSeries = series * minutos;
+            if (seriesComRepeticoes.group(4) != null) {
+                minutosSeries += (series - 1)
+                        * Integer.parseInt(seriesComRepeticoes.group(4));
+            }
+            return minutosSeries;
+        }
+        if (principal.matches("^\\s*\\d+\\s*series?\\s+de\\b.*")) {
+            throw new DuracaoIncalculavelException(
+                    MotivoDuracao.PRINCIPAL_SERIES_NAO_RECONHECIDAS);
         }
 
         Matcher repeticaoComParenteses = Pattern.compile(
-                "(\\d+)\\s*x\\s*\\(([^()]*)\\)",
+                "^\\s*(\\d+)\\s*x\\s*\\(([^()]*)\\)\\s*$",
                 Pattern.CASE_INSENSITIVE
         ).matcher(principal);
-        int minutosRepeticoes = 0;
-        StringBuffer restante = new StringBuffer();
-        boolean encontrouRepeticao = false;
-        while (repeticaoComParenteses.find()) {
-            Integer minutosInternos = somarMinutos(repeticaoComParenteses.group(2));
-            if (minutosInternos == null) {
-                return null;
-            }
-            minutosRepeticoes += Integer.parseInt(repeticaoComParenteses.group(1))
-                    * minutosInternos;
-            repeticaoComParenteses.appendReplacement(restante, "");
-            encontrouRepeticao = true;
-        }
-        if (encontrouRepeticao) {
-            repeticaoComParenteses.appendTail(restante);
-            Integer minutosRestantes = somarMinutos(restante.toString());
-            return minutosRepeticoes + (minutosRestantes == null ? 0 : minutosRestantes);
+        if (repeticaoComParenteses.matches()) {
+            return calcularRepeticoes(
+                    Integer.parseInt(repeticaoComParenteses.group(1)),
+                    repeticaoComParenteses.group(2));
         }
 
         Matcher repeticaoNoInicio = Pattern.compile(
-                "^\\s*(\\d+)\\s*x\\b",
+                ".*\\b(\\d+)\\s*x\\b.*",
                 Pattern.CASE_INSENSITIVE
         ).matcher(principal);
-        if (repeticaoNoInicio.find()) {
-            return soma * Integer.parseInt(repeticaoNoInicio.group(1));
+        if (repeticaoNoInicio.matches()) {
+            throw new DuracaoIncalculavelException(
+                    MotivoDuracao.PRINCIPAL_REPETICAO_NAO_RECONHECIDA);
         }
 
         return soma;
+    }
+
+    private Integer calcularRepeticoes(int repeticoes, String passos) {
+        if (passos.matches(".*\\bentre\\s+repeticoes\\b.*")
+                && !passos.matches(".*\\brecuperacao\\b.*")) {
+            throw new DuracaoIncalculavelException(
+                    MotivoDuracao.PRINCIPAL_RECUPERACAO_AMBIGUA);
+        }
+        int esforcos = 0;
+        int recuperacoes = 0;
+        boolean encontrou = false;
+        for (String passo : separarPassos(passos)) {
+            Matcher matcher = MINUTOS_PATTERN.matcher(passo);
+            int minutosNoPasso = 0;
+            while (matcher.find()) {
+                int minutos = Integer.parseInt(matcher.group(1));
+                if (passo.matches(".*\\brecuperacao\\b.*")) {
+                    recuperacoes += minutos;
+                } else {
+                    esforcos += minutos;
+                }
+                encontrou = true;
+                minutosNoPasso++;
+            }
+            if (minutosNoPasso > 1) {
+                throw new DuracaoIncalculavelException(
+                        MotivoDuracao.PRINCIPAL_PASSO_AMBIGUO);
+            }
+        }
+        if (!encontrou) {
+            throw new DuracaoIncalculavelException(
+                    MotivoDuracao.PRINCIPAL_REPETICAO_NAO_RECONHECIDA);
+        }
+        return repeticoes * esforcos + Math.max(0, repeticoes - 1) * recuperacoes;
+    }
+
+    private boolean possuiDistanciaSemDuracaoExplicita(String principal) {
+        for (String passo : separarPassos(principal)) {
+            if (DISTANCIA_PATTERN.matcher(passo).find()
+                    && !MINUTOS_PATTERN.matcher(passo).find()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String[] separarPassos(String texto) {
+        return texto.split("\\s*(?:\\+|,|\\bcom\\b|\\bseguido\\s+de\\b)\\s*");
+    }
+
+    private boolean possuiFormatoTemporalNaoSuportado(String texto) {
+        if (!StringUtils.hasText(texto)) {
+            return false;
+        }
+        return Pattern.compile("\\b\\d+\\s*(?:h|hora|horas|s|seg|segundo|segundos)\\b")
+                .matcher(texto).find()
+                || Pattern.compile("\\b\\d+\\s*(?:-|–|—|/|a|e)\\s*\\d+\\s*min(?:uto)?s?\\b")
+                .matcher(texto).find()
+                || Pattern.compile("\\b\\d+[.,]\\d+\\s*min(?:uto)?s?\\b")
+                .matcher(texto).find();
+    }
+
+    private enum MotivoDuracao {
+        AQUECIMENTO_SEM_MINUTOS,
+        PRINCIPAL_SEM_MINUTOS,
+        PRINCIPAL_DISTANCIA_SEM_DURACAO,
+        PRINCIPAL_REPETICAO_NAO_RECONHECIDA,
+        PRINCIPAL_SERIES_NAO_RECONHECIDAS,
+        PRINCIPAL_RECUPERACAO_AMBIGUA,
+        PRINCIPAL_PASSO_AMBIGUO,
+        DESAQUECIMENTO_SEM_MINUTOS,
+        FORMATO_DURACAO_NAO_SUPORTADO
+    }
+
+    private static class DuracaoIncalculavelException extends RuntimeException {
+        private final MotivoDuracao motivo;
+
+        private DuracaoIncalculavelException(MotivoDuracao motivo) {
+            this.motivo = motivo;
+        }
     }
 
     private Integer somarMinutos(String trecho) {
@@ -586,9 +699,7 @@ public class PlanoTreinoRespostaParser {
         String texto = normalizar(String.join(
                 " ",
                 valorTexto(treino.getTipo()),
-                valorTexto(treino.getTitulo()),
-                valorTexto(treino.getDescricao()),
-                valorTexto(treino.getObservacoes())
+                valorTexto(treino.getTitulo())
         ));
 
         return texto.contains("prova")

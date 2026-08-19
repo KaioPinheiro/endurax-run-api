@@ -8,6 +8,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlanoTreinoRespostaParserTest {
 
@@ -32,23 +33,15 @@ class PlanoTreinoRespostaParserTest {
     }
 
     @Test
-    void respostaComSemanaExtraDescartaSemanaExcedente() {
-        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
-                planoJson(
-                        semanaJson(1, todosOsDiasJson())
-                                + ","
-                                + semanaJson(2, todosOsDiasJson())
-                ),
-                1
-        );
-
-        assertEquals(1, plano.getSemanas().size());
-        assertEquals(1, plano.getSemanas().get(0).getNumeroSemana());
+    void respostaComSemanaExtraRejeitaPlano() {
+        assertThrows(GerarTreinoIAException.class, () -> parser.parsePlanoTreino(
+                planoJson(semanaJson(1, todosOsDiasJson()) + ","
+                        + semanaJson(2, todosOsDiasJson())), 1));
     }
 
     @Test
-    void respostaComCincoSemanasQuandoEsperavaQuatroRemoveSemanaExtra() {
-        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+    void respostaComCincoSemanasQuandoEsperavaQuatroRejeitaPlano() {
+        assertThrows(GerarTreinoIAException.class, () -> parser.parsePlanoTreino(
                 planoJson(
                         semanaJson(1, todosOsDiasJson())
                                 + ","
@@ -60,12 +53,7 @@ class PlanoTreinoRespostaParserTest {
                                 + ","
                                 + semanaJson(5, todosOsDiasJson())
                 ),
-                4
-        );
-
-        assertEquals(4, plano.getDuracaoSemanas());
-        assertEquals(4, plano.getSemanas().size());
-        assertEquals(4, plano.getSemanas().get(3).getNumeroSemana());
+                4));
     }
 
     @Test
@@ -186,9 +174,9 @@ class PlanoTreinoRespostaParserTest {
                   "diaSemana": "terça-feira",
                   "titulo": "Corrida e caminhada",
                   "tipo": "Caminhada e trote leve",
-                  "descricao": "Aquecimento: 5 min de caminhada a 10:00 min/km | Principal: 6 x 2 min de trote leve com 2 min de caminhada | Desaquecimento: 5 min de caminhada a 10:00 min/km",
+                  "descricao": "Aquecimento: 5 min de caminhada a 10:00 min/km | Principal: 6 x (2 min de trote leve + 2 min de caminhada de recuperação) | Desaquecimento: 5 min de caminhada a 10:00 min/km",
                   "distanciaKm": "3 km",
-                  "duracaoEstimada": "34 min",
+                  "duracaoEstimada": "32 min",
                   "paceSugerido": "Por percepção de esforço",
                   "observacoes": "Manter esforço confortável"
                 }
@@ -207,13 +195,13 @@ class PlanoTreinoRespostaParserTest {
     }
 
     @Test
-    void rejeitaDuracaoDiferenteDaSomaDosBlocos() {
+    void normalizaDuracaoDiferenteDaSomaDosBlocos() {
         String treinoComDuracaoIncorreta = """
                 {
                   "diaSemana": "terça-feira",
                   "titulo": "Caminhada e trote",
                   "tipo": "Leve",
-                  "descricao": "Aquecimento: 5 min de caminhada a 10:00 min/km | Principal: 10 min de caminhada, 1 min de trote leve, 2 min de caminhada (repetir 3x) | Desaquecimento: 5 min de caminhada a 10:00 min/km",
+                  "descricao": "Aquecimento: 5 min de caminhada a 10:00 min/km | Principal: 3 x (10 min de caminhada + 1 min de trote leve + 2 min de caminhada) | Desaquecimento: 5 min de caminhada a 10:00 min/km",
                   "distanciaKm": "3 km",
                   "duracaoEstimada": "30 min",
                   "paceSugerido": "Por percepção de esforço",
@@ -221,29 +209,23 @@ class PlanoTreinoRespostaParserTest {
                 }
                 """;
 
-        GerarTreinoIAException exception = assertThrows(
-                GerarTreinoIAException.class,
-                () -> parser.parsePlanoTreino(
-                        planoJson(semanaJson(1, treinoComDuracaoIncorreta)),
-                        1,
-                        List.of("terça-feira")
-                )
-        );
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treinoComDuracaoIncorreta)),
+                1,
+                List.of("terça-feira"));
 
-        assertEquals(
-                "O serviço retornou duração incompatível com a soma dos blocos do treino. Tente gerar novamente.",
-                exception.getMessage()
-        );
+        assertEquals("49 min", plano.getSemanas().get(0).getTreinos().get(1)
+                .getDuracaoEstimada());
     }
 
     @Test
-    void rejeitaDuracaoNumericaIncompativelComRepeticaoInterna() {
+    void normalizaDuracaoNumericaIncompativelComRepeticaoInterna() {
         String treinoComDuracaoIncorreta = """
                 {
                   "diaSemana": "terça-feira",
                   "titulo": "Corrida e caminhada",
                   "tipo": "Leve",
-                  "descricao": "Aquecimento: 5 min de trote leve a 8:00 min/km | Principal: 15 min de caminhada + 2 x (1 min de trote leve + 2 min de caminhada) | Desaquecimento: 5 min de caminhada a 9:00 min/km",
+                  "descricao": "Aquecimento: 5 min de trote leve a 8:00 min/km | Principal: 2 x (1 min de trote leve + 2 min de caminhada) | Desaquecimento: 5 min de caminhada a 9:00 min/km",
                   "distanciaKm": "3",
                   "duracaoEstimada": "40",
                   "paceSugerido": "8:00-9:00",
@@ -251,23 +233,193 @@ class PlanoTreinoRespostaParserTest {
                 }
                 """;
 
-        GerarTreinoIAException exception = assertThrows(
-                GerarTreinoIAException.class,
-                () -> parser.parsePlanoTreino(
-                        planoJson(semanaJson(1, treinoComDuracaoIncorreta)),
-                        1,
-                        List.of("terça-feira")
-                )
-        );
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treinoComDuracaoIncorreta)),
+                1,
+                List.of("terça-feira"));
 
-        assertEquals(
-                "O serviço retornou duração incompatível com a soma dos blocos do treino. Tente gerar novamente.",
-                exception.getMessage()
-        );
+        assertEquals("16 min", plano.getSemanas().get(0).getTreinos().get(1)
+                .getDuracaoEstimada());
     }
 
     @Test
-    void rejeitaTreinoSemDistanciaEPaceSugerido() {
+    void mantemDuracaoCalculadaQuandoValorInformadoJaEstaCorreto() {
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treinoJson("terça-feira", "Leve"))),
+                1,
+                List.of("terça-feira"));
+
+        assertEquals("35 min", plano.getSemanas().get(0).getTreinos().get(1)
+                .getDuracaoEstimada());
+    }
+
+    @Test
+    void calculaRecuperacaoEntreRepeticoesSomenteNMenosUmVezes() {
+        String treino = treinoComDescricao(
+                "6 x (3 min de esforço + 2 min de recuperação)",
+                "38 min");
+
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treino)), 1, List.of("terça-feira"));
+        assertEquals("38 min", plano.getSemanas().get(0).getTreinos().get(1)
+                .getDuracaoEstimada());
+    }
+
+    @Test
+    void calculaTirosPorDistanciaComDuracaoExplicita() {
+        String treino = treinoComDescricao(
+                "6 x (800 m em aproximadamente 3 min + 2 min de recuperação)",
+                "38 min");
+
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treino)), 1, List.of("terça-feira"));
+        assertEquals("38 min", plano.getSemanas().get(0).getTreinos().get(1)
+                .getDuracaoEstimada());
+    }
+
+    @Test
+    void calculaMultiplasSeriesERecuperacaoEntreSeries() {
+        String treino = treinoComDescricao(
+                "2 series de 3 x (2 min de esforço + 1 min de recuperação), com 3 min de recuperação entre series",
+                "29 min");
+
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treino)), 1, List.of("terça-feira"));
+        assertEquals("29 min", plano.getSemanas().get(0).getTreinos().get(1)
+                .getDuracaoEstimada());
+    }
+
+    @Test
+    void preservaDuracaoInformadaQuandoEsforcoPorDistanciaNaoPodeSerCalculado() {
+        String treino = treinoComDescricao(
+                "6 x (800 m a 4:30 min/km + 2 min de recuperação)",
+                "20 min");
+
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treino)), 1, List.of("terça-feira"));
+        assertEquals("20 min", plano.getSemanas().get(0).getTreinos().get(1)
+                .getDuracaoEstimada());
+    }
+
+    @Test
+    void preservaDuracaoInformadaQuandoDescricaoUsaSegundos() {
+        String treino = treinoComDescricao(
+                "6 x (3 min de esforço + 30 segundos de recuperação)",
+                "28 min");
+
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treino)), 1, List.of("terça-feira"));
+        assertEquals("28 min", plano.getSemanas().get(0).getTreinos().get(1)
+                .getDuracaoEstimada());
+    }
+
+    @Test
+    void calculaRodagemEDistanciaComDuracaoExplicita() {
+        assertEquals("50 min", duracaoFinal("40 min leve"));
+        assertEquals("58 min", duracaoFinal("8 km em 48 min"));
+    }
+
+    @Test
+    void aceitaRodagemELongaoSomentePorDistanciaComFallback() {
+        assertEquals("77 min", duracaoFinalIncalculavel("8 km", "77 min"));
+        assertEquals("120 min", duracaoFinalIncalculavel("24 km progressivo", "120 min"));
+        assertEquals("55 min", duracaoFinalIncalculavel("10 km em ritmo de maratona", "55 min"));
+    }
+
+    @Test
+    void calculaTempoRunProgressivoELongaoEmMinutos() {
+        assertEquals("60 min", duracaoFinal("20 min leve + 30 min em ritmo de prova"));
+        assertEquals("70 min", duracaoFinal("30 min leve, 20 min moderado, 10 min forte"));
+        assertEquals("130 min", duracaoFinal("120 min progressivo"));
+        assertEquals("120 min", duracaoFinal("20 km em 110 min"));
+    }
+
+    @Test
+    void aceitaDistanciaParcialSemDuracaoNoProgressivo() {
+        assertEquals("125 min", duracaoFinalIncalculavel(
+                "20 km em 110 min, ultimos 5 km em ritmo de prova", "125 min"));
+    }
+
+    @Test
+    void usaFallbackParaTodasAsFormasDeFaixaConhecidas() {
+        for (String principal : List.of(
+                "10-12 min leve",
+                "10–12 min leve",
+                "10—12 min leve",
+                "10/12 min leve",
+                "entre 10 e 12 min leve")) {
+            assertEquals("30 min", duracaoFinalIncalculavel(principal, "30 min"));
+        }
+    }
+
+    @Test
+    void usaFallbackParaHorasEMinutosDecimais() {
+        assertEquals("120 min", duracaoFinalIncalculavel("2h de corrida", "120 min"));
+        assertEquals("11 min", duracaoFinalIncalculavel("10,5 min leve", "11 min"));
+    }
+
+    @Test
+    void preservaDuracaoQuandoAquecimentoNaoTemMinutos() {
+        String aquecimentoSemMinutos = treinoComDescricao("40 min leve", "50 min")
+                .replace("5 min de trote leve", "trote leve");
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, aquecimentoSemMinutos)), 1, List.of("terça-feira"));
+        assertEquals("50 min", plano.getSemanas().get(0).getTreinos().get(1)
+                .getDuracaoEstimada());
+    }
+
+    @Test
+    void calculaSeparadoresCanonicosNasRepeticoes() {
+        assertEquals("38 min", duracaoFinal(
+                "6 x (3 min de esforço com 2 min de recuperação)"));
+        assertEquals("38 min", duracaoFinal(
+                "6 x (3 min de esforço seguido de 2 min de recuperação)"));
+        assertEquals("38 min", duracaoFinal(
+                "6 x (3 min de esforço, 2 min de recuperação)"));
+    }
+
+    @Test
+    void reconheceTroteECaminhadaDeRecuperacao() {
+        assertEquals("38 min", duracaoFinal(
+                "6 x (3 min de esforço + 2 min de trote de recuperação)"));
+        assertEquals("38 min", duracaoFinal(
+                "6 x (3 min de esforço + 2 min de caminhada de recuperação)"));
+    }
+
+    @Test
+    void aceitaComFallbackRecuperacaoAmbiguaERepeticaoSemParenteses() {
+        assertEquals("45 min", duracaoFinalIncalculavel(
+                "6 x (3 min de esforço + 2 min de trote entre repeticoes)",
+                "45 min"));
+        assertEquals("50 min", duracaoFinalIncalculavel(
+                "3 x 2 km em ritmo de prova com 3 min de trote",
+                "50 min"));
+        assertEquals("40 min", duracaoFinalIncalculavel(
+                "6 x 3 min de esforço com 2 min de recuperação",
+                "40 min"));
+    }
+
+    @Test
+    void aceitaComFallbackMultiplasSeriesSemParenteses() {
+        assertEquals("35 min", duracaoFinalIncalculavel(
+                "2 series de 4 x 1 min de esforço com 1 min de recuperação",
+                "35 min"));
+    }
+
+    @Test
+    void aceitaDescricaoMultilineComMarcadoresCanonicos() {
+        String treino = treinoComDescricao(
+                "20 min leve\\n+ 30 min em ritmo de prova", "60 min");
+
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treino)), 1, List.of("terça-feira"));
+
+        assertEquals("60 min", plano.getSemanas().get(0).getTreinos().get(1)
+                .getDuracaoEstimada());
+    }
+
+    @Test
+    void aceitaTreinoSemDistanciaEPaceSugerido() {
         String treinoSemMetricas = """
                 {
                   "diaSemana": "terça-feira",
@@ -281,19 +433,10 @@ class PlanoTreinoRespostaParserTest {
                 }
                 """;
 
-        GerarTreinoIAException exception = assertThrows(
-                GerarTreinoIAException.class,
-                () -> parser.parsePlanoTreino(
-                        planoJson(semanaJson(1, treinoSemMetricas)),
-                        1,
-                        List.of("terça-feira")
-                )
-        );
-
-        assertEquals(
-                "O serviço retornou treino sem distância ou pace sugerido. Tente gerar novamente.",
-                exception.getMessage()
-        );
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treinoSemMetricas)), 1, List.of("terça-feira"));
+        assertEquals("30 min", plano.getSemanas().get(0).getTreinos().get(1)
+                .getDuracaoEstimada());
     }
 
     @Test
@@ -343,13 +486,13 @@ class PlanoTreinoRespostaParserTest {
         );
 
         assertEquals(
-                "O serviço retornou treino sem aquecimento, bloco principal e desaquecimento detalhados com pace. Tente gerar novamente.",
+                "O serviço retornou treino sem aquecimento, bloco principal e desaquecimento. Tente gerar novamente.",
                 exception.getMessage()
         );
     }
 
     @Test
-    void respostaSemPaceNoAquecimentoEDesaquecimentoRejeitaPlano() {
+    void respostaSemPaceNoAquecimentoEDesaquecimentoAceitaPlano() {
         String treinoSemPaceNasExtremidades = """
                 {
                   "diaSemana": "segunda-feira",
@@ -363,14 +506,11 @@ class PlanoTreinoRespostaParserTest {
                 }
                 """;
 
-        assertThrows(
-                GerarTreinoIAException.class,
-                () -> parser.parsePlanoTreino(
-                        planoJson(semanaJson(1, treinoSemPaceNasExtremidades)),
-                        1,
-                        List.of("segunda-feira")
-                )
-        );
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treinoSemPaceNasExtremidades)),
+                1, List.of("segunda-feira"));
+        assertEquals("50 min", plano.getSemanas().get(0).getTreinos().get(0)
+                .getDuracaoEstimada());
     }
 
     @Test
@@ -442,21 +582,61 @@ class PlanoTreinoRespostaParserTest {
     }
 
     @Test
-    void respostaComEducativosRejeitaPlano() {
+    void heuristicasDeVariedadeNaoRejeitamPlano() {
+        String treinos = treinoJson("segunda-feira", "Treino intervalado")
+                + "," + treinoJson("quarta-feira", "Treino de tiros")
+                + "," + treinoJson("sabado", "Rodagem longa");
+
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treinos)), 1,
+                List.of("segunda-feira", "quarta-feira", "sabado"), false, "sabado");
+
+        assertEquals(7, plano.getSemanas().get(0).getTreinos().size());
+    }
+
+    @Test
+    void duracaoIncalculavelSemDuracaoInformadaMantemPlano() {
+        assertEquals("", duracaoFinalIncalculavel("24 km progressivo", ""));
+    }
+
+    @Test
+    void regressaoBlocosSemMinutosPreservaDuracaoInformada() {
+        String treino = treinoComDescricao("ritmo progressivo por sensacao", "60 min")
+                .replace("5 min de trote leve", "trote leve")
+                .replace("5 min de caminhada leve", "caminhada leve");
+
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treino)), 1, List.of("terça-feira"));
+
+        assertEquals("60 min", plano.getSemanas().get(0).getTreinos().get(1)
+                .getDuracaoEstimada());
+    }
+
+    @Test
+    void regressaoBlocosSemMinutosMantemDuracaoAusente() {
+        String treino = treinoComDescricao("ritmo progressivo por sensacao", "")
+                .replace("5 min de trote leve", "trote leve")
+                .replace("5 min de caminhada leve", "caminhada leve");
+
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treino)), 1, List.of("terça-feira"));
+
+        assertEquals("", plano.getSemanas().get(0).getTreinos().get(1)
+                .getDuracaoEstimada());
+    }
+
+    @Test
+    void respostaComEducativosMantemPlano() {
         String treinoComEducativos = treinoJson("segunda-feira", "Rodagem leve")
                 .replace(
                         "Aquecimento: 10 min de trote leve a 6:20 min/km",
                         "Aquecimento: 10 min de trote leve a 6:20 min/km + 3 educativos"
                 );
 
-        assertThrows(
-                GerarTreinoIAException.class,
-                () -> parser.parsePlanoTreino(
-                        planoJson(semanaJson(1, treinoComEducativos)),
-                        1,
-                        List.of("segunda-feira")
-                )
-        );
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treinoComEducativos)),
+                1, List.of("segunda-feira"));
+        assertEquals(7, plano.getSemanas().get(0).getTreinos().size());
     }
 
     private String planoJson(String semanas) {
@@ -511,6 +691,36 @@ class PlanoTreinoRespostaParserTest {
                   "observacoes": "Manter confortavel"
                 }
                 """.formatted(diaSemana, titulo);
+    }
+
+    private String treinoComDescricao(String principal, String duracao) {
+        return """
+                {
+                  "diaSemana": "terça-feira",
+                  "titulo": "Intervalado",
+                  "tipo": "Intervalado",
+                  "descricao": "Aquecimento: 5 min de trote leve a 6:20 min/km | Principal: %s | Desaquecimento: 5 min de caminhada a 6:40 min/km",
+                  "distanciaKm": "5 km",
+                  "duracaoEstimada": "%s",
+                  "paceSugerido": "6:00 min/km",
+                  "observacoes": "Manter controle"
+                }
+                """.formatted(principal, duracao);
+    }
+
+    private String duracaoFinal(String principal) {
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treinoComDescricao(principal, "999 min"))),
+                1,
+                List.of("terça-feira"));
+        return plano.getSemanas().get(0).getTreinos().get(1).getDuracaoEstimada();
+    }
+
+    private String duracaoFinalIncalculavel(String principal, String duracaoInformada) {
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treinoComDescricao(principal, duracaoInformada))),
+                1, List.of("terça-feira"));
+        return plano.getSemanas().get(0).getTreinos().get(1).getDuracaoEstimada();
     }
 
     private String descansoJson(String diaSemana) {

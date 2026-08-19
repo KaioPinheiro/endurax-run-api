@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
 import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -472,6 +473,82 @@ class GerarPlanoTreinoIAServiceTest {
                 .enviarPromptPlanoTreino(anyString(), anyString(), eq(4));
     }
 
+    @Test
+    void duracaoDivergenteENormalizadaSemRetry() {
+        OpenAIService openAIService = mock(OpenAIService.class);
+        GerarPlanoTreinoIAService serviceComMock = new GerarPlanoTreinoIAService(
+                new PlanoTreinoPromptBuilder(new com.kaio.runtracker.ai.prompt.PromptObjetivoFactory()),
+                openAIService,
+                new PlanoTreinoRespostaParser(new ObjectMapper()));
+        GerarPlanoTreinoRequestDTO request = requestSemProva(4);
+        request.setDiasDisponiveis(List.of(
+                "Segunda-feira", "Quarta-feira", "Sexta-feira", "Sábado"));
+        String planoValido = planoJson(treinosComQuatroDias());
+
+        String planoComDuracaoDivergente = planoValido
+                .replace("Principal: 20 min", "Principal: 44 min")
+                .replace("35 minutos", "60 minutos");
+        when(openAIService.enviarPromptPlanoTreino(anyString(), anyString(), eq(4)))
+                .thenReturn(planoComDuracaoDivergente);
+
+        PlanoTreinoIAResponseDTO plano = serviceComMock.gerarPlano(request);
+
+        assertEquals(4, plano.getSemanas().size());
+        assertEquals("59 min", plano.getSemanas().get(0).getTreinos().get(0)
+                .getDuracaoEstimada());
+        verify(openAIService, times(1))
+                .enviarPromptPlanoTreino(anyString(), anyString(), eq(4));
+    }
+
+    @Test
+    void descricaoNaoCalculavelUsaDuracaoInformadaSemRetry() {
+        OpenAIService openAIService = mock(OpenAIService.class);
+        GerarPlanoTreinoIAService serviceComMock = new GerarPlanoTreinoIAService(
+                new PlanoTreinoPromptBuilder(new com.kaio.runtracker.ai.prompt.PromptObjetivoFactory()),
+                openAIService,
+                new PlanoTreinoRespostaParser(new ObjectMapper()));
+        GerarPlanoTreinoRequestDTO request = requestSemProva(4);
+        request.setDiasDisponiveis(List.of(
+                "Segunda-feira", "Quarta-feira", "Sexta-feira", "Sábado"));
+        String planoValido = planoJson(treinosComQuatroDias());
+        String planoIncalculavel = planoValido.replace(
+                "Principal: 20 min a 6:00 min/km", "Principal: 5 km a 6:00 min/km");
+
+        when(openAIService.enviarPromptPlanoTreino(anyString(), anyString(), eq(4)))
+                .thenReturn(planoIncalculavel, planoValido);
+
+        PlanoTreinoIAResponseDTO plano = serviceComMock.gerarPlano(request);
+
+        assertEquals("35 minutos", plano.getSemanas().get(0).getTreinos().get(0)
+                .getDuracaoEstimada());
+        verify(openAIService, times(1))
+                .enviarPromptPlanoTreino(anyString(), anyString(), eq(4));
+    }
+
+    @Test
+    void descricaoNaoCalculavelSemDuracaoInformadaNaoGeraRetry() {
+        OpenAIService openAIService = mock(OpenAIService.class);
+        GerarPlanoTreinoIAService serviceComMock = new GerarPlanoTreinoIAService(
+                new PlanoTreinoPromptBuilder(new com.kaio.runtracker.ai.prompt.PromptObjetivoFactory()),
+                openAIService,
+                new PlanoTreinoRespostaParser(new ObjectMapper()));
+        GerarPlanoTreinoRequestDTO request = requestSemProva(4);
+        request.setDiasDisponiveis(List.of(
+                "Segunda-feira", "Quarta-feira", "Sexta-feira", "Sábado"));
+        String planoIncalculavel = planoJson(treinosComQuatroDias())
+                .replace("Principal: 20 min a 6:00 min/km", "Principal: 5 km a 6:00 min/km")
+                .replace("35 minutos", "");
+        when(openAIService.enviarPromptPlanoTreino(anyString(), anyString(), eq(4)))
+                .thenReturn(planoIncalculavel);
+
+        PlanoTreinoIAResponseDTO plano = serviceComMock.gerarPlano(request);
+
+        assertEquals("", plano.getSemanas().get(0).getTreinos().get(0)
+                .getDuracaoEstimada());
+        verify(openAIService, times(1))
+                .enviarPromptPlanoTreino(anyString(), anyString(), eq(4));
+    }
+
     private GerarPlanoTreinoRequestDTO requestSemProva(Integer duracaoSemanas) {
         GerarPlanoTreinoRequestDTO request = baseRequest();
         request.setPossuiProva(false);
@@ -559,7 +636,7 @@ class GerarPlanoTreinoIAServiceTest {
                   "tipo": "Corrida",
                   "descricao": "Aquecimento: 10 min de trote leve a 6:20 min/km | Principal: 20 min a 6:00 min/km | Desaquecimento: 5 min de caminhada a 6:40 min/km",
                   "distanciaKm": "5 km",
-                  "duracaoEstimada": "30 minutos",
+                  "duracaoEstimada": "35 minutos",
                   "paceSugerido": "6:00 min/km",
                   "observacoes": "Manter confortavel"
                 }

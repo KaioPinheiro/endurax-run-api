@@ -81,18 +81,25 @@ public class PlanoTreinoPromptBuilder {
                 - foco: 1 frase.
                 - Para todo treino de corrida, exceto prova/competicao, descricao deve ser um roteiro executavel neste formato exato: "Aquecimento: ... | Principal: ... | Desaquecimento: ...".
                 - Para Experiencia "Nunca corri", Aquecimento deve informar minutos de caminhada e o pace em min/km. Para os demais corredores, deve informar minutos de trote leve e o pace em min/km. Nunca inclua educativos.
-                - Principal deve informar exatamente o que fazer. Em treinos intervalados, detalhe quantidade de series/repeticoes, metros ou minutos de cada tiro, pace/intensidade e recuperacao entre repeticoes. Em rodagem continua ou longao, detalhe minutos ou quilometros e pace/intensidade.
+                - Principal deve informar exatamente o que fazer. Em treinos intervalados, detalhe quantidade de series/repeticoes, minutos inteiros de cada esforco, pace/intensidade e recuperacao entre repeticoes. Em rodagem continua ou longao, a duracao em minutos inteiros e obrigatoria; quilometros podem aparecer apenas como informacao complementar e nunca substituem os minutos.
+                - Todo Aquecimento, Principal e Desaquecimento deve ter duracao explicita em minutos inteiros. Toda recuperacao tambem deve informar minutos inteiros.
+                - Se um esforco for prescrito por distancia, informe no mesmo passo a duracao prevista desse esforco em minutos; nunca dependa apenas de distancia e pace para calcular a duracao.
+                - Nao use horas, segundos, faixas de duracao ou duracoes ambiguas nos componentes da soma nem em duracaoEstimada.
+                - Em repeticoes, recuperacao ocorre somente entre os esforcos: para N esforcos existem N - 1 recuperacoes. Nao inclua recuperacao apos a ultima repeticao, salvo se ela for prescrita separadamente como outro bloco.
+                - Use somente esta sintaxe para repeticoes: "N x (X min de esforco + Y min de recuperacao)". Se houver distancia: "N x (DISTANCIA em X min de esforco + Y min de recuperacao)".
+                - Dentro dos parenteses, separe passos somente por "+", virgula, "com" ou "seguido de". Identifique pausas sempre como "recuperacao", "trote de recuperacao" ou "caminhada de recuperacao"; nao use apenas "trote entre repeticoes".
+                - Para multiplas series, use somente "S series de N x (...), com Z min de recuperacao entre series".
                 - Para Experiencia "Nunca corri", Desaquecimento deve ser sempre caminhada com minutos e pace em min/km. Para os demais corredores, pode usar corrida leve ou caminhada.
                 - Use valores numericos concretos; nao escreva apenas "aquecer", "fazer tiros" ou "desaquecimento leve".
                 - distanciaKm e duracaoEstimada devem representar a sessao completa, incluindo aquecimento, bloco principal e desaquecimento.
                 - distanciaKm e paceSugerido sao obrigatorios em todo treino de corrida. distanciaKm deve ser numerica e maior que zero; paceSugerido deve trazer uma faixa em min/km ou "Por percepcao de esforco" para iniciantes sem pace seguro.
-                - Calcule duracaoEstimada pela soma exata dos blocos. Em repeticoes, multiplique a soma dos passos pela quantidade de repeticoes e depois adicione aquecimento e desaquecimento.
+                - Calcule duracaoEstimada pela soma exata dos blocos. Multiplique cada esforco pela quantidade de repeticoes e cada recuperacao entre repeticoes por N - 1; depois adicione aquecimento, eventual recuperacao entre series e desaquecimento.
                 - Exemplo: 5 min de aquecimento + 3 x (10 min de caminhada + 1 min de trote + 2 min de caminhada) + 5 min de desaquecimento totaliza 49 min, nunca 30 min.
                 - observacoes: 1 frase curta com orientacao pratica de execucao, tecnica, hidratacao ou controle de esforco; evite frases genericas.
                 - Descanso e fortalecimento devem usar textos curtos e padronizados.
 
                 Exemplo de descricao para intervalado:
-                "Aquecimento: 12 min de trote leve a 6:10-6:30 min/km | Principal: 6 x 800 m a 4:20-4:30 min/km, com 2 min de trote entre repeticoes | Desaquecimento: 10 min de trote leve a 6:20-6:40 min/km"
+                "Aquecimento: 12 min de trote leve a 6:10-6:30 min/km | Principal: 6 x (800 m em 3 min de esforco a 4:20-4:30 min/km + 2 min de trote de recuperacao) | Desaquecimento: 10 min de trote leve a 6:20-6:40 min/km"
 
                 Exemplo de descricao para rodagem continua:
                 "Aquecimento: 10 min de trote leve a 6:20-6:40 min/km | Principal: 40 min em ritmo confortavel de 5:50-6:10 min/km | Desaquecimento: 8 min de trote leve ou caminhada a 6:30-7:00 min/km"

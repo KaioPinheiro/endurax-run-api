@@ -162,7 +162,8 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
                 try {
                     resposta = openAIService.enviarPromptPlanoTreino(
                             systemPrompt,
-                            promptParaTentativa(userPrompt, request, tentativa),
+                            promptParaTentativa(
+                                    userPrompt, request, tentativa, ultimaFalhaParser),
                             duracaoSemanas
                     );
                 } finally {
@@ -185,14 +186,13 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
                             request.getDiaLongao()
                     );
                     parserMs += tempoMs(inicioParser);
-                    if (logDetalhado) {
-                        logger.info("Response: geracaoId={}\n{}", geracaoId, jsonLog(plano));
-                    } else {
-                        logger.info("Resposta automática validada: geracaoId={}, semanas={}, possuiAlerta={}",
-                                geracaoId,
-                                plano.getSemanas() != null ? plano.getSemanas().size() : 0,
-                                StringUtils.hasText(plano.getAlerta()));
-                    }
+                    logger.info(
+                            "Resposta validada: geracaoId={}, semanas={}, treinos={}, possuiAlerta={}",
+                            geracaoId,
+                            quantidadeSemanas(plano),
+                            quantidadeTreinos(plano),
+                            StringUtils.hasText(plano.getAlerta())
+                    );
                     logger.info(
                             "Plano IA gerado com sucesso: geracaoId={}, tentativa={}, semanas={}, treinos={}, possuiAlerta={}, parserMs={}, totalMs={}",
                             geracaoId,
@@ -350,10 +350,13 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
     private String promptParaTentativa(
             String userPrompt,
             GerarPlanoTreinoRequestDTO request,
-            int tentativa) {
+            int tentativa,
+            GerarTreinoIAException falhaAnterior) {
         if (tentativa == 1) {
             return userPrompt;
         }
+
+        String orientacaoEstruturaDuracao = orientacaoEstruturaDuracao(falhaAnterior);
 
         return userPrompt
                 + "\n\nCorrecao obrigatoria antes de responder:"
@@ -369,7 +372,37 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
                 + "\n- Nao retorne corrida comum em dias que nao estao nessa lista."
                 + (Boolean.TRUE.equals(request.getPossuiProva())
                         ? "\n- Se a prova cair fora desses dias, a competicao pode aparecer no dia real da prova."
-                        : "");
+                        : "")
+                + orientacaoEstruturaDuracao;
+    }
+
+    private String orientacaoEstruturaDuracao(GerarTreinoIAException falhaAnterior) {
+        if (falhaAnterior == null || falhaAnterior.getMessage() == null) {
+            return "";
+        }
+        String mensagem = falhaAnterior.getMessage();
+        String normalizada = normalizar(mensagem);
+        if (!normalizada.contains("motivo=")) {
+            return "";
+        }
+
+        String instrucao = normalizada.contains("principal_distancia_sem_duracao")
+                ? "O bloco principal continha distância sem duração explícita no mesmo passo."
+                : normalizada.contains("aquecimento_sem_minutos")
+                        ? "O aquecimento não continha duração explícita em minutos inteiros."
+                        : normalizada.contains("desaquecimento_sem_minutos")
+                                ? "O desaquecimento não continha duração explícita em minutos inteiros."
+                                : normalizada.contains("recuperacao_ambigua")
+                                        ? "A recuperação não estava identificada e separada de forma inequívoca."
+                                        : normalizada.contains("series_nao_reconhecidas")
+                                                ? "As múltiplas séries estavam fora da sintaxe canônica com parênteses."
+                                                : normalizada.contains("repeticao_nao_reconhecida")
+                                                        ? "A repetição estava fora da sintaxe canônica N x (...)."
+                                                        : "A descrição usou duração ou estrutura fora da gramática suportada.";
+
+        return "\n- A tentativa anterior foi rejeitada: " + instrucao
+                + " Motivo técnico: " + valorLog(mensagem)
+                + "\n- Gere novamente usando a gramática canônica e minutos inteiros explícitos em cada bloco e esforço por distância.";
     }
 
     private boolean deveTentarNovamente(

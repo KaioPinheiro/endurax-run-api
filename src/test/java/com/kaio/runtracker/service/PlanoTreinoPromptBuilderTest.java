@@ -96,6 +96,12 @@ class PlanoTreinoPromptBuilderTest {
         assertTrue(prompt.contains("3 x (2 min de trote leve + 3 min de caminhada)"));
         assertTrue(prompt.contains("atletas mais velhos, lesionados, com dor"));
         assertTrue(prompt.contains("Desaquecimento deve ser sempre caminhada"));
+        assertTrue(prompt.contains("para N esforcos existem N - 1 recuperacoes"));
+        assertTrue(prompt.contains("duracao prevista desse esforco em minutos"));
+        assertTrue(prompt.contains("Nao use horas, segundos, faixas de duracao"));
+        assertTrue(prompt.contains("quilometros podem aparecer apenas como informacao complementar"));
+        assertTrue(prompt.contains("Use somente esta sintaxe para repeticoes"));
+        assertTrue(prompt.contains("nao use apenas \"trote entre repeticoes\""));
     }
 
     @Test
