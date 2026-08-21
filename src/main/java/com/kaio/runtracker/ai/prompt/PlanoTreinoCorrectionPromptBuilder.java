@@ -43,7 +43,12 @@ public class PlanoTreinoCorrectionPromptBuilder {
 
                 Contexto: objetivo=%s; corre5KmDireto=%s; tempo5Km=%s;
                 maiorDistancia=%s; experiência=%s; volume=%s; distância=%s;
+                tempoDesejado=%s; paceAlvoMeta=%s; ritmoConfortavelAtual=%s;
                 possuiProva=%s; dataProva=%s; possuiLesão=%s.
+
+                O paceAlvoMeta e o pace matematico da meta. Diferencie-o do ritmo
+                confortavel atual e dos demais ritmos de treino. Se mencionar ritmo
+                da distancia-alvo referindo-se a meta, mantenha-o coerente com paceAlvoMeta.
 
                 Erros determinísticos: %s
                 Avisos determinísticos: %s
@@ -65,6 +70,9 @@ public class PlanoTreinoCorrectionPromptBuilder {
                 valor(request.getExperienciaCorrida()),
                 valor(request.getVolumeSemanalAtual()),
                 valor(request.getDistanciaAlvo()),
+                valor(request.getTempoDesejado()),
+                PaceAlvoCalculator.calcular(request).orElse("Nao se aplica"),
+                valor(request.getRitmoConfortavel()),
                 Boolean.TRUE.equals(request.getPossuiProva()) ? "Sim" : "Não",
                 request.getDataProva() == null ? "Não informada" : request.getDataProva(),
                 Boolean.TRUE.equals(request.getPossuiLesao()) ? "Sim" : "Não",

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class PlanoTreinoPromptBuilderTest {
 
@@ -60,6 +61,27 @@ class PlanoTreinoPromptBuilderTest {
         assertTrue(prompt.contains("Distancia da meta de performance: 10 km"));
         assertTrue(prompt.contains("Tempo atual na distancia alvo: 52:10"));
         assertTrue(prompt.contains("Tempo desejado na distancia alvo: 49:30"));
+        assertTrue(prompt.contains("Pace matematico necessario para atingir a meta (PACE-ALVO DA META): 4:57 min/km"));
+        assertTrue(prompt.contains("RITMO CONFORTAVEL ATUAL"));
+        assertTrue(prompt.contains("os ritmos de treino nao precisam ser iguais"));
+    }
+
+    @Test
+    void objetivoNaoPerformanceNaoRecebePaceAlvo() {
+        GerarPlanoTreinoRequestDTO request = new GerarPlanoTreinoRequestDTO();
+        request.setObjetivo("Melhorar condicionamento");
+        request.setTempoDesejado("40:00");
+        request.setExperienciaCorrida("1 a 3 anos");
+        request.setVolumeSemanalAtual("20-40 km");
+        request.setRitmoConfortavel("5:30-6:00 min/km");
+        request.setDistanciaAlvo("10 km");
+        request.setDiasDisponiveis(List.of("terca-feira"));
+        request.setPossuiProva(false);
+
+        String prompt = promptBuilder.criarPrompt(request, 4);
+
+        assertTrue(prompt.contains("PACE-ALVO DA META): Nao se aplica"));
+        assertFalse(prompt.contains("PACE-ALVO DA META): 4:00 min/km"));
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.kaio.runtracker.service;
 
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
 import com.kaio.runtracker.ai.prompt.PromptObjetivoFactory;
+import com.kaio.runtracker.ai.prompt.PaceAlvoCalculator;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -61,6 +62,9 @@ public class PlanoTreinoPromptBuilder {
                 - Mantenha em geral 75%% a 85%% do tempo ou volume em intensidade confortavel.
                 - Nao coloque sessoes exigentes em dias consecutivos e limite o aumento semanal de carga a aproximadamente 10%%.
                 - Paces, distancias e duracoes devem partir da capacidade atual, nunca apenas da meta desejada.
+                - Diferencie sempre PACE-ALVO DA META, RITMO CONFORTAVEL ATUAL e RITMOS DE TREINO.
+                - O pace-alvo informado nos dados e o pace matematico necessario para a meta; os ritmos de treino nao precisam ser iguais a ele e devem respeitar a capacidade atual.
+                - Ao usar "ritmo de maratona", "ritmo de meia maratona", "ritmo de 10 km" ou "ritmo de 5 km" referindo-se a META, use uma faixa coerente com o pace-alvo calculado. Nao chame um pace muito mais lento de ritmo-alvo da meta.
                 - Se o atleta nunca correu, comece com sessoes alternando caminhada e blocos curtos de trote ou corrida leve, sempre em intensidade confortavel e controlada.
                 - Progrida primeiro o tempo dos blocos de trote, depois reduza gradualmente as pausas caminhando e, somente quando houver adaptacao segura, introduza trechos curtos de corrida continua devagar.
                 - Trechos um pouco mais rapidos so podem aparecer de forma curta, controlada e progressiva depois de demonstrada adaptacao, se idade, lesoes, observacoes e recuperacao permitirem; nunca use esforco maximo nem priorize velocidade sobre seguranca.
@@ -140,6 +144,7 @@ public class PlanoTreinoPromptBuilder {
                 - Distancia da meta de performance: %s
                 - Tempo atual na distancia alvo: %s
                 - Tempo desejado na distancia alvo: %s
+                - Pace matematico necessario para atingir a meta (PACE-ALVO DA META): %s
                 - Corre 5 km direto sem caminhar: %s
                 - Tempo atual nos 5 km: %s
                 - Maior distancia ja percorrida: %s
@@ -167,6 +172,7 @@ public class PlanoTreinoPromptBuilder {
                 distanciaPerformance(request),
                 valor(request.getTempoAtual()),
                 request.ehObjetivoPerformance() ? valor(request.getTempoDesejado()) : "Nao se aplica",
+                PaceAlvoCalculator.calcular(request).orElse("Nao se aplica"),
                 respostaSimNao(request.getCorre5KmSemCaminhar()),
                 valor(request.getTempo5Km()),
                 valor(request.getMaiorDistanciaCorrida()),
