@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
 import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
+import com.kaio.runtracker.dto.PublicTrainingPlanResponseDTO;
 import com.kaio.runtracker.dto.TrainingPlanRequestDTO;
 import com.kaio.runtracker.dto.TrainingPlanResponseDTO;
 import com.kaio.runtracker.entity.TrainingPlan;
@@ -72,6 +73,14 @@ public class TrainingPlanService {
 
     public void deletar(Long id) {
         repository.deleteById(id);
+    }
+
+    public PublicTrainingPlanResponseDTO buscarPlanoPagoPorToken(String token) {
+        return repository.findPlanoPagoByToken(token)
+                .map(trainingPlan -> new PublicTrainingPlanResponseDTO(
+                        trainingPlan.getNome(), trainingPlan.getObjetivo(),
+                        trainingPlan.getNivel(), trainingPlan.getDescricao()))
+                .orElse(null);
     }
 
     @Transactional

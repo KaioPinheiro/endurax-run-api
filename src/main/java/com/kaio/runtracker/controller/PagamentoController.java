@@ -39,35 +39,30 @@ public class PagamentoController {
                 .body(response);
     }
 
-    @GetMapping("/{id}/status")
-    public PagamentoStatusResponseDTO consultarStatus(@PathVariable Long id) {
-        PagamentoStatusResponseDTO status = service.consultarStatus(id);
-        Long pagamentoParaGerar = service.pagamentoPendenteDeGeracao(id);
+    @GetMapping("/public/{token}/status")
+    public PagamentoStatusResponseDTO consultarStatus(@PathVariable String token) {
+        PagamentoStatusResponseDTO status = service.consultarStatusPorToken(token);
+        Long pagamentoParaGerar = service.pagamentoPendenteDeGeracaoPorToken(token);
         if (pagamentoParaGerar != null) {
             geracaoAssincronaService.iniciar(pagamentoParaGerar);
         }
         return status;
     }
 
-    @GetMapping("/{id}/resultado")
-    public PagamentoResultadoResponseDTO consultarResultado(@PathVariable Long id) {
-        return service.consultarResultado(id);
+    @GetMapping("/public/{token}/resultado")
+    public PagamentoResultadoResponseDTO consultarResultado(@PathVariable String token) {
+        return service.consultarResultadoPorToken(token);
     }
 
-    @GetMapping("/solicitacao/{solicitacaoPlanoId}")
-    public PagamentoResultadoResponseDTO consultarPorSolicitacao(@PathVariable Long solicitacaoPlanoId) {
-        return service.consultarPorSolicitacao(solicitacaoPlanoId);
-    }
-
-    @PostMapping("/{id}/geracao/tentar-novamente")
-    public ResponseEntity<Void> tentarNovamente(@PathVariable Long id) {
-        PagamentoResultadoResponseDTO resultado = service.consultarResultado(id);
+    @PostMapping("/public/{token}/geracao/tentar-novamente")
+    public ResponseEntity<Void> tentarNovamente(@PathVariable String token) {
+        PagamentoResultadoResponseDTO resultado = service.consultarResultadoPorToken(token);
         if (resultado.pagamentoStatus() != com.kaio.runtracker.entity.PagamentoStatus.APPROVED) {
             throw new com.kaio.runtracker.exception.PagamentoException(
                     org.springframework.http.HttpStatus.CONFLICT,
                     "O pagamento ainda não foi aprovado.");
         }
-        geracaoAssincronaService.iniciar(id);
+        geracaoAssincronaService.iniciar(service.buscarIdPorToken(token));
         return ResponseEntity.accepted().build();
     }
 }

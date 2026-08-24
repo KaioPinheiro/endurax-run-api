@@ -85,6 +85,18 @@ class FluxoPlanoConfigTest {
         assertDoesNotThrow(validator::validar);
     }
 
+    @Test
+    void prodSemWebhookSecretFalha() {
+        MercadoPagoProperties mercadoPago = mercadoPago(false);
+        mercadoPago.setWebhookSecret(null);
+        FluxoPlanoConfigValidator validator = validator(
+                fluxo(FluxoPlanoModo.PRODUCAO), mercadoPago, "prod");
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class, validator::validar);
+        assertTrue(exception.getMessage().contains("MERCADO_PAGO_WEBHOOK_SECRET"));
+    }
+
     private FluxoPlanoConfigValidator validator(
             FluxoPlanoProperties fluxo,
             MercadoPagoProperties mercadoPago,
@@ -103,6 +115,7 @@ class FluxoPlanoConfigTest {
     private MercadoPagoProperties mercadoPago(boolean ambienteTeste) {
         MercadoPagoProperties properties = new MercadoPagoProperties();
         properties.setAmbienteTeste(ambienteTeste);
+        properties.setWebhookSecret("WEBHOOK_SECRET_TESTE");
         return properties;
     }
 }

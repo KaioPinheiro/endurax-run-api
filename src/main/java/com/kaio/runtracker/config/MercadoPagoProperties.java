@@ -18,6 +18,8 @@ public class MercadoPagoProperties {
     @NotBlank(message = "MERCADO_PAGO_ACCESS_TOKEN não foi configurado")
     private String accessToken;
 
+    private String webhookSecret;
+
     @NotNull
     @DecimalMin(value = "0.01")
     private BigDecimal valorPlano;
@@ -29,6 +31,8 @@ public class MercadoPagoProperties {
 
     public String getAccessToken() { return accessToken; }
     public void setAccessToken(String accessToken) { this.accessToken = accessToken; }
+    public String getWebhookSecret() { return webhookSecret; }
+    public void setWebhookSecret(String webhookSecret) { this.webhookSecret = webhookSecret; }
     public BigDecimal getValorPlano() { return valorPlano; }
     public void setValorPlano(BigDecimal valorPlano) { this.valorPlano = valorPlano; }
     public int getExpiracaoPixMinutos() { return expiracaoPixMinutos; }

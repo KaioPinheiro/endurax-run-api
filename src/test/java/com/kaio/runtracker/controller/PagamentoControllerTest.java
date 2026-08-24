@@ -25,10 +25,10 @@ class PagamentoControllerTest {
     void reconciliacaoQueDetectaAprovacaoIniciaGeracaoNoBackend() {
         PagamentoStatusResponseDTO status = new PagamentoStatusResponseDTO(
                 PagamentoStatus.APPROVED, "accredited", true, false);
-        when(service.consultarStatus(1L)).thenReturn(status);
-        when(service.pagamentoPendenteDeGeracao(1L)).thenReturn(1L);
+        when(service.consultarStatusPorToken("TOKEN")).thenReturn(status);
+        when(service.pagamentoPendenteDeGeracaoPorToken("TOKEN")).thenReturn(1L);
 
-        PagamentoStatusResponseDTO resposta = controller.consultarStatus(1L);
+        PagamentoStatusResponseDTO resposta = controller.consultarStatus("TOKEN");
 
         assertEquals(PagamentoStatus.APPROVED, resposta.status());
         verify(geracaoAssincronaService).iniciar(1L);
@@ -38,10 +38,10 @@ class PagamentoControllerTest {
     void reconciliacaoNaoIniciaGeracaoQuandoBackendNaoSinaliza() {
         PagamentoStatusResponseDTO status = new PagamentoStatusResponseDTO(
                 PagamentoStatus.PENDING, "waiting_transfer", false, false);
-        when(service.consultarStatus(1L)).thenReturn(status);
-        when(service.pagamentoPendenteDeGeracao(1L)).thenReturn(null);
+        when(service.consultarStatusPorToken("TOKEN")).thenReturn(status);
+        when(service.pagamentoPendenteDeGeracaoPorToken("TOKEN")).thenReturn(null);
 
-        controller.consultarStatus(1L);
+        controller.consultarStatus("TOKEN");
 
         verify(geracaoAssincronaService, never()).iniciar(any());
     }

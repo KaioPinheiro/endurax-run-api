@@ -13,6 +13,10 @@ public interface PagamentoRepository extends JpaRepository<Pagamento, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Pagamento> findByExternalReference(String externalReference);
 
+    @org.springframework.data.jpa.repository.Query(
+            "select p from Pagamento p where p.externalReference = :externalReference")
+    Optional<Pagamento> findPublicByExternalReference(String externalReference);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @org.springframework.data.jpa.repository.Query("select p from Pagamento p where p.id = :id")
     Optional<Pagamento> findByIdForUpdate(Long id);

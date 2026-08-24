@@ -67,14 +67,22 @@ public class PagamentoService {
 
     public CriarPagamentoPixResponseDTO criarPix(String email, Long solicitacaoPlanoId) {
         String emailNormalizado = email.trim().toLowerCase(Locale.ROOT);
+        if (solicitacaoPlanoId != null) {
+            Pagamento existente = repository.findBySolicitacaoPlanoId(solicitacaoPlanoId).orElse(null);
+            if (existente != null) {
+                if (!emailNormalizado.equals(existente.getEmailPagador())) {
+                    throw new PagamentoException(HttpStatus.NOT_FOUND, "Pagamento não encontrado.");
+                }
+                return respostaCriacao(existente);
+            }
+        }
         SolicitacaoPlano solicitacao = buscarSolicitacao(solicitacaoPlanoId, emailNormalizado);
         String externalReference = UUID.randomUUID().toString();
         String idempotencyKey = UUID.randomUUID().toString();
         OffsetDateTime expiracaoRequest = OffsetDateTime.now(clock)
                 .plusMinutes(properties.getExpiracaoPixMinutos());
 
-        logger.info("Criando cobrança Pix: externalReference={}, valor={}",
-                externalReference, properties.getValorPlano());
+        logger.info("Criando cobrança Pix: valor={}", properties.getValorPlano());
 
         MercadoPagoOrderResponse order = mercadoPagoClient.criarOrderPix(
                 emailNormalizado,
@@ -117,6 +125,14 @@ public class PagamentoService {
     public PagamentoStatusResponseDTO consultarStatus(Long id) {
         Pagamento pagamento = repository.findById(id).orElseThrow(() ->
                 new PagamentoException(HttpStatus.NOT_FOUND, "Pagamento não encontrado."));
+        return consultarStatus(pagamento);
+    }
+
+    public PagamentoStatusResponseDTO consultarStatusPorToken(String token) {
+        return consultarStatus(buscarPorToken(token));
+    }
+
+    private PagamentoStatusResponseDTO consultarStatus(Pagamento pagamento) {
 
         if (pagamento.getStatus() == PagamentoStatus.APPROVED) {
             logger.info("Reconciliação ignorada: APPROVED é terminal, pagamentoId={}, orderId={}",
@@ -158,14 +174,12 @@ public class PagamentoService {
         String statusRemoto = statusRemoto(order);
         String statusDetailRemoto = statusDetailRemoto(order);
         String paymentId = payment != null ? payment.id() : null;
-        logger.info("Webhook Mercado Pago: Order consultada, orderId={}, externalReference={}, "
-                        + "status={}, statusDetail={}, paymentId={}",
-                order.id(), order.externalReference(), statusRemoto, statusDetailRemoto, paymentId);
+        logger.info("Webhook Mercado Pago: Order consultada, orderId={}, status={}, statusDetail={}, paymentId={}",
+                order.id(), statusRemoto, statusDetailRemoto, paymentId);
 
         Pagamento pagamento = repository.findByExternalReference(order.externalReference()).orElse(null);
         if (pagamento == null) {
-            logger.warn("Webhook Mercado Pago: pagamento não encontrado, orderId={}, externalReference={}",
-                    order.id(), order.externalReference());
+            logger.warn("Webhook Mercado Pago: pagamento não encontrado, orderId={}", order.id());
             return null;
         }
         logger.info("Webhook Mercado Pago: pagamento localizado, pagamentoId={}, orderId={}",
@@ -216,6 +230,10 @@ public class PagamentoService {
                 .orElse(null);
     }
 
+    public Long pagamentoPendenteDeGeracaoPorToken(String token) {
+        return idParaGarantirGeracao(buscarPorToken(token));
+    }
+
     private Long idParaGarantirGeracao(Pagamento pagamento) {
         boolean geracaoNuncaIniciada = pagamento.getStatus() == PagamentoStatus.APPROVED
                 && pagamento.getGeracaoStatus() == GeracaoPlanoStatus.PENDING
@@ -229,6 +247,14 @@ public class PagamentoService {
         return respostaResultado(pagamento);
     }
 
+    public PagamentoResultadoResponseDTO consultarResultadoPorToken(String token) {
+        return respostaResultado(buscarPorToken(token));
+    }
+
+    public Long buscarIdPorToken(String token) {
+        return buscarPorToken(token).getId();
+    }
+
     public PagamentoResultadoResponseDTO consultarPorSolicitacao(Long solicitacaoPlanoId) {
         Pagamento pagamento = repository.findBySolicitacaoPlanoId(solicitacaoPlanoId).orElseThrow(() ->
                 new PagamentoException(HttpStatus.NOT_FOUND, "Pagamento não encontrado."));
@@ -236,12 +262,12 @@ public class PagamentoService {
     }
 
     private PagamentoResultadoResponseDTO respostaResultado(Pagamento pagamento) {
-        Long planoId = pagamento.getTrainingPlan() != null ? pagamento.getTrainingPlan().getId() : null;
+        String planoToken = pagamento.getTrainingPlan() != null ? pagamento.getExternalReference() : null;
         String mensagem = pagamento.getGeracaoStatus() == GeracaoPlanoStatus.FAILED
                 ? "Não foi possível gerar o plano neste momento."
                 : null;
         return new PagamentoResultadoResponseDTO(
-                pagamento.getId(), pagamento.getStatus(), pagamento.getGeracaoStatus(), planoId, mensagem,
+                pagamento.getId(), pagamento.getStatus(), pagamento.getGeracaoStatus(), planoToken, mensagem,
                 pagamento.getValor(), pagamento.getPixCopiaCola(), pagamento.getQrCodeBase64(),
                 pagamento.getTicketUrl(), pagamento.getDataExpiracao());
     }
@@ -327,8 +353,16 @@ public class PagamentoService {
     }
 
     private CriarPagamentoPixResponseDTO respostaCriacao(Pagamento p) {
-        return new CriarPagamentoPixResponseDTO(p.getId(), p.getStatus(), p.getValor(),
+        return new CriarPagamentoPixResponseDTO(p.getId(), p.getExternalReference(), p.getStatus(), p.getValor(),
                 p.getPixCopiaCola(), p.getQrCodeBase64(), p.getTicketUrl(), p.getDataExpiracao());
+    }
+
+    private Pagamento buscarPorToken(String token) {
+        if (!StringUtils.hasText(token)) {
+            throw new PagamentoException(HttpStatus.NOT_FOUND, "Pagamento não encontrado.");
+        }
+        return repository.findPublicByExternalReference(token).orElseThrow(() ->
+                new PagamentoException(HttpStatus.NOT_FOUND, "Pagamento não encontrado."));
     }
 
     private PagamentoStatusResponseDTO respostaStatus(Pagamento p) {

@@ -10,7 +10,7 @@ public record PagamentoResultadoResponseDTO(
         Long pagamentoId,
         PagamentoStatus pagamentoStatus,
         GeracaoPlanoStatus geracaoStatus,
-        Long planoId,
+        String planoToken,
         String mensagem,
         BigDecimal valor,
         String pixCopiaCola,

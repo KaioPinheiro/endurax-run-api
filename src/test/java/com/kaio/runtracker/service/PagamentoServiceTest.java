@@ -73,6 +73,7 @@ class PagamentoServiceTest {
         CriarPagamentoPixResponseDTO response = service.criarPix(" Cliente@Email.com ");
 
         assertEquals(1L, response.pagamentoId());
+        assertTrue(response.acessoToken() != null && !response.acessoToken().isBlank());
         assertEquals(PagamentoStatus.PENDING, response.status());
         assertEquals(new BigDecimal("12.90"), response.valor());
         assertEquals("QR-CODE", response.pixCopiaCola());
@@ -118,6 +119,43 @@ class PagamentoServiceTest {
         assertEquals(7L, captor.getValue().getSolicitacaoPlano().getId());
         assertEquals(SolicitacaoPlanoStatus.PAYMENT_PENDING, solicitacao.getStatus());
         verify(solicitacaoPlanoRepository).save(solicitacao);
+    }
+
+    @Test
+    void recriarPixDaMesmaSolicitacaoEEmailRetornaMesmoTokenSemNovaCobranca() {
+        Pagamento pagamento = pagamentoPendente();
+        pagamento.setEmailPagador("cliente@email.com");
+        when(repository.findBySolicitacaoPlanoId(7L)).thenReturn(Optional.of(pagamento));
+
+        CriarPagamentoPixResponseDTO response = service.criarPix("cliente@email.com", 7L);
+
+        assertEquals("EXT123", response.acessoToken());
+        verify(client, never()).criarOrderPix(any(), any(), any(), any());
+    }
+
+    @Test
+    void tokenInvalidoNaoVazaExistenciaDoPagamento() {
+        when(repository.findPublicByExternalReference("invalido")).thenReturn(Optional.empty());
+
+        PagamentoException exception = assertThrows(
+                PagamentoException.class,
+                () -> service.consultarResultadoPorToken("invalido"));
+
+        assertEquals(404, exception.getStatus().value());
+        assertEquals("Pagamento não encontrado.", exception.getMessage());
+    }
+
+    @Test
+    void resultadoPorTokenForneceMesmoTokenParaRecuperarPlano() {
+        Pagamento pagamento = pagamentoPendente();
+        pagamento.setStatus(PagamentoStatus.APPROVED);
+        pagamento.setGeracaoStatus(GeracaoPlanoStatus.COMPLETED);
+        pagamento.setTrainingPlan(new TrainingPlan());
+        when(repository.findPublicByExternalReference("EXT123")).thenReturn(Optional.of(pagamento));
+
+        var resultado = service.consultarResultadoPorToken("EXT123");
+
+        assertEquals("EXT123", resultado.planoToken());
     }
 
     @Test
@@ -318,7 +356,7 @@ class PagamentoServiceTest {
         var resultado = service.consultarResultado(1L);
 
         assertEquals(GeracaoPlanoStatus.COMPLETED, resultado.geracaoStatus());
-        assertEquals(10L, resultado.planoId());
+        assertEquals("EXT123", resultado.planoToken());
         verify(client, never()).consultarOrder(any());
     }
 
@@ -359,7 +397,7 @@ class PagamentoServiceTest {
         assertEquals(1L, resultado.pagamentoId());
         assertEquals(PagamentoStatus.PENDING, resultado.pagamentoStatus());
         assertEquals(GeracaoPlanoStatus.PENDING, resultado.geracaoStatus());
-        assertEquals(null, resultado.planoId());
+        assertEquals(null, resultado.planoToken());
         assertEquals(new BigDecimal("12.90"), resultado.valor());
         assertEquals("QR-CODE", resultado.pixCopiaCola());
         assertEquals("BASE64", resultado.qrCodeBase64());
@@ -389,7 +427,7 @@ class PagamentoServiceTest {
         var resultado = service.consultarResultado(1L);
 
         assertEquals(GeracaoPlanoStatus.PROCESSING, resultado.geracaoStatus());
-        assertEquals(null, resultado.planoId());
+        assertEquals(null, resultado.planoToken());
     }
 
     @Test
@@ -405,7 +443,7 @@ class PagamentoServiceTest {
         var resultado = service.consultarResultado(1L);
 
         assertEquals(GeracaoPlanoStatus.COMPLETED, resultado.geracaoStatus());
-        assertEquals(10L, resultado.planoId());
+        assertEquals("EXT123", resultado.planoToken());
         assertEquals(null, resultado.mensagem());
     }
 
@@ -445,6 +483,7 @@ class PagamentoServiceTest {
         Pagamento pagamento = new Pagamento();
         pagamento.setId(1L);
         pagamento.setOrderExternalId("ORD123");
+        pagamento.setExternalReference("EXT123");
         pagamento.setStatus(PagamentoStatus.PENDING);
         pagamento.setStatusDetail("waiting_transfer");
         pagamento.setValor(new BigDecimal("12.90"));

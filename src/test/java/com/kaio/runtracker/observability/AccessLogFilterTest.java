@@ -5,6 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -137,8 +139,46 @@ class AccessLogFilterTest {
         assertThat(log()).contains("userId=42").doesNotContain("nao-logar@example.com");
     }
 
+    @Test
+    void ocultaPlanoTokenNoLogSemAlterarUriEntregueAoEndpoint() throws Exception {
+        String token = "550e8400-e29b-41ce-98fd-7fd50b809672";
+        MockHttpServletRequest request = requisicao("/training-plans/public/" + token);
+        AtomicReference<String> uriRecebida = new AtomicReference<>();
+
+        filter.doFilter(request, new MockHttpServletResponse(),
+                (req, res) -> uriRecebida.set(((HttpServletRequest) req).getRequestURI()));
+
+        assertThat(log())
+                .contains("uri=/training-plans/public/[REDACTED]")
+                .doesNotContain(token);
+        assertThat(uriRecebida).hasValue("/training-plans/public/" + token);
+    }
+
+    @Test
+    void ocultaPagamentoTokenEPreservaSufixoDaRota() throws Exception {
+        String token = "550e8400-e29b-41ce-98fd-7fd50b809672";
+
+        executar(requisicao("/api/pagamentos/public/" + token + "/resultado"),
+                new MockHttpServletResponse(), 200);
+
+        assertThat(log())
+                .contains("uri=/api/pagamentos/public/[REDACTED]/resultado")
+                .doesNotContain(token);
+    }
+
+    @Test
+    void mantemRotaComumInalterada() throws Exception {
+        executar(requisicao("/api/teste/123"), new MockHttpServletResponse(), 200);
+
+        assertThat(log()).contains("uri=/api/teste/123");
+    }
+
     private MockHttpServletRequest requisicao() {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/teste");
+        return requisicao("/api/teste");
+    }
+
+    private MockHttpServletRequest requisicao(String uri) {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", uri);
         request.setRemoteAddr("203.0.113.10");
         request.addHeader("User-Agent", "agent-test/1.0");
         return request;

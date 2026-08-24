@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 
 public record CriarPagamentoPixResponseDTO(
         Long pagamentoId,
+        String acessoToken,
         PagamentoStatus status,
         BigDecimal valor,
         String pixCopiaCola,

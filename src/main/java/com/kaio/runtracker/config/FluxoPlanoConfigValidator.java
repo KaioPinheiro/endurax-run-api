@@ -4,6 +4,7 @@ import jakarta.annotation.PostConstruct;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 @Component
 public class FluxoPlanoConfigValidator {
@@ -27,6 +28,11 @@ public class FluxoPlanoConfigValidator {
                 && modo == FluxoPlanoModo.DESENVOLVIMENTO) {
             throw new IllegalStateException(
                     "Configuração incompatível: profile prod não permite APP_FLUXO_PLANO_MODO=DESENVOLVIMENTO.");
+        }
+        if (environment.acceptsProfiles(Profiles.of("prod"))
+                && !StringUtils.hasText(mercadoPagoProperties.getWebhookSecret())) {
+            throw new IllegalStateException(
+                    "Configuração incompatível: profile prod exige MERCADO_PAGO_WEBHOOK_SECRET.");
         }
         if (modo == FluxoPlanoModo.TESTE && !mercadoPagoProperties.isAmbienteTeste()) {
             throw new IllegalStateException(
