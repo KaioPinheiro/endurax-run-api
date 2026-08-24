@@ -641,6 +641,8 @@ public class PlanoTreinoRespostaParser {
         }
         return Pattern.compile("\\b\\d+\\s*(?:h|hora|horas|s|seg|segundo|segundos)\\b")
                 .matcher(texto).find()
+                || Pattern.compile("\\b\\d+:\\d{2}\\s*min(?:uto)?s?\\b(?!\\s*/\\s*km)")
+                .matcher(texto).find()
                 || Pattern.compile("\\b\\d+\\s*(?:-|–|—|/|a|e)\\s*\\d+\\s*min(?:uto)?s?\\b")
                 .matcher(texto).find()
                 || Pattern.compile("\\b\\d+[.,]\\d+\\s*min(?:uto)?s?\\b")

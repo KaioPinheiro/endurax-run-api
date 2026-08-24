@@ -320,6 +320,22 @@ class PlanoTreinoRespostaParserTest {
     }
 
     @Test
+    void preservaDuracaoInformadaQuandoEsforcoUsaMinutosESegundos() {
+        String treino = treinoComDescricao(
+                "6 x (800 m em 3:30 min de esforço a 4:25-4:35 min/km"
+                        + " + 2 min de recuperação)",
+                "56 min")
+                .replace("Aquecimento: 5 min", "Aquecimento: 15 min")
+                .replace("Desaquecimento: 5 min", "Desaquecimento: 10 min");
+
+        PlanoTreinoIAResponseDTO plano = parser.parsePlanoTreino(
+                planoJson(semanaJson(1, treino)), 1, List.of("terça-feira"));
+
+        assertEquals("56 min", plano.getSemanas().get(0).getTreinos().get(1)
+                .getDuracaoEstimada());
+    }
+
+    @Test
     void aceitaRodagemELongaoSomentePorDistanciaComFallback() {
         assertEquals("77 min", duracaoFinalIncalculavel("8 km", "77 min"));
         assertEquals("120 min", duracaoFinalIncalculavel("24 km progressivo", "120 min"));

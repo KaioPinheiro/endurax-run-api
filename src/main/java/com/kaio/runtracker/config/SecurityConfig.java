@@ -3,6 +3,8 @@ package com.kaio.runtracker.config;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -17,6 +19,17 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
+    private static final List<String> ORIGENS_PRODUCAO = List.of(
+            "https://www.enduraxrun.com.br",
+            "https://enduraxrun.com.br"
+    );
+
+    private final Environment environment;
+
+    public SecurityConfig(Environment environment) {
+        this.environment = environment;
+    }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -44,11 +57,11 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        configuration.setAllowedOrigins(List.of(
-                "http://localhost:5173",
-                "https://www.enduraxrun.com.br",
-                "https://enduraxrun.com.br"
-        ));
+        List<String> allowedOrigins = new java.util.ArrayList<>(ORIGENS_PRODUCAO);
+        if (!environment.acceptsProfiles(Profiles.of("prod"))) {
+            allowedOrigins.add("http://localhost:5173");
+        }
+        configuration.setAllowedOrigins(allowedOrigins);
         configuration.setAllowedMethods(List.of(
                 "GET",
                 "POST",

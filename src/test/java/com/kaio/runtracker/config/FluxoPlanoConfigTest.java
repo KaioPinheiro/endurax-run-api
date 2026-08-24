@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
+import org.springframework.mock.env.MockEnvironment;
 
 import java.util.Map;
 
@@ -28,7 +29,7 @@ class FluxoPlanoConfigTest {
         MercadoPagoProperties mercadoPago = mercadoPago(true);
 
         assertTrue(fluxo.isPagamentoObrigatorio());
-        assertDoesNotThrow(() -> new FluxoPlanoConfigValidator(fluxo, mercadoPago).validar());
+        assertDoesNotThrow(() -> validator(fluxo, mercadoPago, "dev").validar());
     }
 
     @Test
@@ -37,7 +38,7 @@ class FluxoPlanoConfigTest {
         MercadoPagoProperties mercadoPago = mercadoPago(false);
 
         assertTrue(fluxo.isPagamentoObrigatorio());
-        assertDoesNotThrow(() -> new FluxoPlanoConfigValidator(fluxo, mercadoPago).validar());
+        assertDoesNotThrow(() -> validator(fluxo, mercadoPago, "prod").validar());
     }
 
     @Test
@@ -51,18 +52,46 @@ class FluxoPlanoConfigTest {
 
     @Test
     void testeComMercadoPagoRealFalha() {
-        FluxoPlanoConfigValidator validator = new FluxoPlanoConfigValidator(
-                fluxo(FluxoPlanoModo.TESTE), mercadoPago(false));
+        FluxoPlanoConfigValidator validator = validator(
+                fluxo(FluxoPlanoModo.TESTE), mercadoPago(false), "dev");
 
         assertThrows(IllegalStateException.class, validator::validar);
     }
 
     @Test
     void producaoComSandboxFalha() {
-        FluxoPlanoConfigValidator validator = new FluxoPlanoConfigValidator(
-                fluxo(FluxoPlanoModo.PRODUCAO), mercadoPago(true));
+        FluxoPlanoConfigValidator validator = validator(
+                fluxo(FluxoPlanoModo.PRODUCAO), mercadoPago(true), "prod");
 
         assertThrows(IllegalStateException.class, validator::validar);
+    }
+
+    @Test
+    void prodComDesenvolvimentoFalha() {
+        FluxoPlanoConfigValidator validator = validator(
+                fluxo(FluxoPlanoModo.DESENVOLVIMENTO), mercadoPago(false), "prod");
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class, validator::validar);
+        assertTrue(exception.getMessage().contains(
+                "profile prod não permite APP_FLUXO_PLANO_MODO=DESENVOLVIMENTO"));
+    }
+
+    @Test
+    void devComDesenvolvimentoPermitido() {
+        FluxoPlanoConfigValidator validator = validator(
+                fluxo(FluxoPlanoModo.DESENVOLVIMENTO), mercadoPago(true), "dev");
+
+        assertDoesNotThrow(validator::validar);
+    }
+
+    private FluxoPlanoConfigValidator validator(
+            FluxoPlanoProperties fluxo,
+            MercadoPagoProperties mercadoPago,
+            String profile) {
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles(profile);
+        return new FluxoPlanoConfigValidator(fluxo, mercadoPago, environment);
     }
 
     private FluxoPlanoProperties fluxo(FluxoPlanoModo modo) {
