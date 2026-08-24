@@ -1,5 +1,7 @@
 package com.kaio.runtracker.client;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kaio.runtracker.config.MercadoPagoProperties;
 import com.kaio.runtracker.exception.PagamentoException;
 import org.slf4j.Logger;
@@ -15,8 +17,11 @@ import org.springframework.web.client.RestClientResponseException;
 import java.math.BigDecimal;
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 import static org.springframework.http.HttpStatus.BAD_GATEWAY;
 import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
@@ -25,6 +30,11 @@ import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
 public class MercadoPagoOrdersClient {
     private static final Logger logger = LoggerFactory.getLogger(MercadoPagoOrdersClient.class);
     private static final String BASE_URL = "https://api.mercadopago.com";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final Pattern EMAIL = Pattern.compile("(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b");
+    private static final Pattern UUID = Pattern.compile("(?i)\\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\b");
+    private static final Pattern CREDENCIAL = Pattern.compile("(?i)\\b(?:bearer\\s+)?(?:APP_USR|TEST|sk)[-_][A-Za-z0-9._-]{12,}\\b");
+    private static final Pattern VALOR_SEGURO = Pattern.compile("[A-Za-z][A-Za-z0-9_.\\[\\]-]{0,99}");
 
     private final MercadoPagoProperties properties;
     private final RestClient restClient;
@@ -105,8 +115,12 @@ public class MercadoPagoOrdersClient {
         } catch (PagamentoException exception) {
             throw exception;
         } catch (RestClientResponseException exception) {
-            logger.warn("Mercado Pago Orders recusou requisição: operacao={}, httpStatus={}, tempoMs={}",
-                    operacao, exception.getStatusCode().value(), tempoMs(inicio));
+            DiagnosticoErro diagnostico = extrairDiagnostico(exception.getResponseBodyAsString());
+            logger.warn("Mercado Pago Orders recusou requisição: operacao={}, httpStatus={}, tempoMs={}, "
+                            + "mpErrorCode={}, mpMessage={}, causeCodes={}, invalidFields={}, mpErrorDetails={}",
+                    operacao, exception.getStatusCode().value(), tempoMs(inicio), diagnostico.codigo(),
+                    diagnostico.mensagem(), diagnostico.codigosCausa(), diagnostico.camposInvalidos(),
+                    diagnostico.disponivel() ? "available" : "unavailable");
             throw new PagamentoException(BAD_GATEWAY, "O Mercado Pago não conseguiu processar a solicitação.", exception);
         } catch (RestClientException exception) {
             logger.warn("Falha de comunicação com Mercado Pago: operacao={}, tempoMs={}, erro={}",
@@ -123,6 +137,75 @@ public class MercadoPagoOrdersClient {
     }
 
     private long tempoMs(long inicio) { return (System.nanoTime() - inicio) / 1_000_000; }
+
+    private DiagnosticoErro extrairDiagnostico(String body) {
+        if (body == null || body.isBlank()) return DiagnosticoErro.indisponivel();
+        try {
+            JsonNode raiz = OBJECT_MAPPER.readTree(body);
+            if (!raiz.isObject()) return DiagnosticoErro.indisponivel();
+
+            String codigo = sanitizarValorEstruturado(primeiroTexto(raiz, "code", "error", "error_code"));
+            String mensagem = sanitizarMensagem(primeiroTexto(raiz, "message"));
+            Set<String> codigosCausa = new LinkedHashSet<>();
+            Set<String> camposInvalidos = new LinkedHashSet<>();
+            coletarDetalhes(raiz.get("cause"), codigosCausa, camposInvalidos);
+            coletarDetalhes(raiz.get("causes"), codigosCausa, camposInvalidos);
+            coletarDetalhes(raiz.get("details"), codigosCausa, camposInvalidos);
+
+            boolean disponivel = codigo != null || mensagem != null
+                    || !codigosCausa.isEmpty() || !camposInvalidos.isEmpty();
+            return disponivel
+                    ? new DiagnosticoErro(valorOuIndisponivel(codigo), valorOuIndisponivel(mensagem),
+                            List.copyOf(codigosCausa), List.copyOf(camposInvalidos), true)
+                    : DiagnosticoErro.indisponivel();
+        } catch (Exception ignorada) {
+            return DiagnosticoErro.indisponivel();
+        }
+    }
+
+    private void coletarDetalhes(JsonNode no, Set<String> codigos, Set<String> campos) {
+        if (no == null || no.isNull()) return;
+        if (no.isArray()) {
+            no.forEach(item -> coletarDetalhes(item, codigos, campos));
+            return;
+        }
+        if (!no.isObject()) return;
+
+        adicionarSeSeguro(codigos, primeiroTexto(no, "code", "error", "error_code"));
+        adicionarSeSeguro(campos, primeiroTexto(no, "field", "property", "parameter"));
+    }
+
+    private void adicionarSeSeguro(Set<String> destino, String valor) {
+        String seguro = sanitizarValorEstruturado(valor);
+        if (seguro != null && destino.size() < 10) destino.add(seguro);
+    }
+
+    private String primeiroTexto(JsonNode no, String... nomes) {
+        for (String nome : nomes) {
+            JsonNode valor = no.get(nome);
+            if (valor != null && valor.isValueNode() && !valor.isNull()) return valor.asText();
+        }
+        return null;
+    }
+
+    private String sanitizarValorEstruturado(String valor) {
+        if (valor == null || !VALOR_SEGURO.matcher(valor).matches()) return null;
+        return valor;
+    }
+
+    private String sanitizarMensagem(String valor) {
+        if (valor == null || valor.isBlank()) return null;
+        String seguro = valor.replaceAll("[\\r\\n\\t]+", " ");
+        seguro = EMAIL.matcher(seguro).replaceAll("[REDACTED]");
+        seguro = UUID.matcher(seguro).replaceAll("[REDACTED]");
+        seguro = CREDENCIAL.matcher(seguro).replaceAll("[REDACTED]");
+        seguro = seguro.replaceAll("[\\p{Cntrl}]", "").trim();
+        return seguro.length() > 300 ? seguro.substring(0, 300) + "..." : seguro;
+    }
+
+    private String valorOuIndisponivel(String valor) {
+        return valor == null ? "unavailable" : valor;
+    }
     private String resumo(String valor) {
         if (valor == null || valor.isBlank()) return "<vazio>";
         String umaLinha = valor.replaceAll("[\\r\\n]+", " ");
@@ -131,4 +214,15 @@ public class MercadoPagoOrdersClient {
 
     @FunctionalInterface
     private interface Chamada { MercadoPagoOrderResponse executar(); }
+
+    private record DiagnosticoErro(
+            String codigo,
+            String mensagem,
+            List<String> codigosCausa,
+            List<String> camposInvalidos,
+            boolean disponivel) {
+        private static DiagnosticoErro indisponivel() {
+            return new DiagnosticoErro("unavailable", "unavailable", List.of(), List.of(), false);
+        }
+    }
 }
