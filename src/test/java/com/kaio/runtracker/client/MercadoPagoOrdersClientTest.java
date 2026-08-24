@@ -113,16 +113,71 @@ class MercadoPagoOrdersClientTest {
 
         mock.server().verify();
         assertThat(logCompleto())
-                .contains("mpErrorDetails=unavailable")
+                .contains("jsonParseable=false", "jsonType=non-json", "mpErrorDetails=unavailable")
                 .doesNotContain(resposta, "segredo-nao-logar");
     }
 
+    @Test
+    void registraSomenteChavesSegurasDeJsonObjetoDesconhecido() {
+        String segredo = "cliente-secreto@example.com";
+        String resposta = "{\"status\":400,\"opaque\":\"" + segredo
+                + "\",\"chave estranha\":\"nao-logar\"}";
+        ClienteMock mock = clienteComResposta(BAD_REQUEST, resposta, "token-teste",
+                MediaType.parseMediaType("application/json;charset=UTF-8"));
+
+        assertThatThrownBy(() -> criarOrder(mock)).isInstanceOf(PagamentoException.class);
+
+        mock.server().verify();
+        assertThat(logCompleto())
+                .contains("contentType=application/json", "charset=UTF-8", "bodyEmpty=false",
+                        "jsonParseable=true", "jsonType=object", "topLevelKeys=[status, opaque]")
+                .doesNotContain(segredo, "nao-logar", "chave estranha");
+    }
+
+    @Test
+    void registraSomenteTipoETamanhoDeJsonArray() {
+        String resposta = "[\"segredo-um\",{\"email\":\"cliente@example.com\"},42]";
+        ClienteMock mock = clienteComResposta(BAD_REQUEST, resposta, "token-teste");
+
+        assertThatThrownBy(() -> criarOrder(mock)).isInstanceOf(PagamentoException.class);
+
+        mock.server().verify();
+        assertThat(logCompleto())
+                .contains("jsonParseable=true", "jsonType=array", "jsonElementCount=3", "topLevelKeys=[]")
+                .doesNotContain("segredo-um", "cliente@example.com");
+    }
+
+    @Test
+    void registraBodyVazioSemTentarExporConteudo() {
+        ClienteMock mock = clienteComResposta(BAD_REQUEST, "", "token-teste");
+
+        assertThatThrownBy(() -> criarOrder(mock)).isInstanceOfSatisfying(PagamentoException.class,
+                erro -> assertThat(erro.getStatus()).isEqualTo(BAD_GATEWAY));
+
+        mock.server().verify();
+        assertThat(logCompleto()).contains(
+                "bodyLengthChars=0", "bodyLengthBytes=0", "bodyEmpty=true", "jsonType=empty");
+    }
+
+    private void criarOrder(ClienteMock mock) {
+        mock.client().criarOrderPix("cliente@example.com", "referencia", "idempotencia",
+                new BigDecimal("12.90"));
+    }
+
     private ClienteMock clienteComResposta(org.springframework.http.HttpStatus status, String resposta, String token) {
+        return clienteComResposta(status, resposta, token, MediaType.APPLICATION_JSON);
+    }
+
+    private ClienteMock clienteComResposta(
+            org.springframework.http.HttpStatus status,
+            String resposta,
+            String token,
+            MediaType contentType) {
         RestClient.Builder builder = RestClient.builder().baseUrl("https://api.mercadopago.com");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(once(), requestTo("https://api.mercadopago.com/v1/orders"))
                 .andExpect(method(POST))
-                .andRespond(withStatus(status).contentType(MediaType.APPLICATION_JSON).body(resposta));
+                .andRespond(withStatus(status).contentType(contentType).body(resposta));
         MercadoPagoProperties properties = properties(false);
         properties.setAccessToken(token);
         properties.setExpiracaoPixMinutos(30);

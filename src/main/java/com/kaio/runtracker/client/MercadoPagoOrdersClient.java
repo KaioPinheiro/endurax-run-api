@@ -16,6 +16,7 @@ import org.springframework.web.client.RestClientResponseException;
 
 import java.math.BigDecimal;
 import java.net.http.HttpClient;
+import java.nio.charset.Charset;
 import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -116,9 +117,15 @@ public class MercadoPagoOrdersClient {
             throw exception;
         } catch (RestClientResponseException exception) {
             DiagnosticoErro diagnostico = extrairDiagnostico(exception.getResponseBodyAsString());
+            MetadadosResposta metadados = extrairMetadados(exception);
             logger.warn("Mercado Pago Orders recusou requisição: operacao={}, httpStatus={}, tempoMs={}, "
+                            + "contentType={}, charset={}, bodyLengthChars={}, bodyLengthBytes={}, bodyEmpty={}, "
+                            + "jsonParseable={}, jsonType={}, jsonElementCount={}, topLevelKeys={}, "
                             + "mpErrorCode={}, mpMessage={}, causeCodes={}, invalidFields={}, mpErrorDetails={}",
-                    operacao, exception.getStatusCode().value(), tempoMs(inicio), diagnostico.codigo(),
+                    operacao, exception.getStatusCode().value(), tempoMs(inicio), metadados.contentType(),
+                    metadados.charset(), metadados.tamanhoCaracteres(), metadados.tamanhoBytes(),
+                    metadados.bodyVazio(), metadados.jsonParseavel(), metadados.tipoJson(),
+                    metadados.quantidadeElementos(), metadados.chavesPrimeiroNivel(), diagnostico.codigo(),
                     diagnostico.mensagem(), diagnostico.codigosCausa(), diagnostico.camposInvalidos(),
                     diagnostico.disponivel() ? "available" : "unavailable");
             throw new PagamentoException(BAD_GATEWAY, "O Mercado Pago não conseguiu processar a solicitação.", exception);
@@ -160,6 +167,49 @@ public class MercadoPagoOrdersClient {
                     : DiagnosticoErro.indisponivel();
         } catch (Exception ignorada) {
             return DiagnosticoErro.indisponivel();
+        }
+    }
+
+    private MetadadosResposta extrairMetadados(RestClientResponseException exception) {
+        byte[] bytes = exception.getResponseBodyAsByteArray();
+        String body = exception.getResponseBodyAsString();
+        boolean vazio = bytes.length == 0;
+        String contentType = "unavailable";
+        String charset = "unavailable";
+        if (exception.getResponseHeaders() != null && exception.getResponseHeaders().getContentType() != null) {
+            MediaType mediaType = exception.getResponseHeaders().getContentType();
+            contentType = mediaType.getType() + "/" + mediaType.getSubtype();
+            Charset charsetResposta = mediaType.getCharset();
+            if (charsetResposta != null) charset = charsetResposta.name();
+        }
+        if (vazio) {
+            return new MetadadosResposta(contentType, charset, 0, 0, true,
+                    false, "empty", 0, List.of());
+        }
+
+        try {
+            JsonNode raiz = OBJECT_MAPPER.readTree(body);
+            if (raiz == null) {
+                return new MetadadosResposta(contentType, charset, body.length(), bytes.length, false,
+                        true, "null", 0, List.of());
+            }
+            if (raiz.isObject()) {
+                List<String> chaves = new java.util.ArrayList<>();
+                raiz.fieldNames().forEachRemaining(chave -> {
+                    if (chaves.size() < 20 && VALOR_SEGURO.matcher(chave).matches()) chaves.add(chave);
+                });
+                return new MetadadosResposta(contentType, charset, body.length(), bytes.length, false,
+                        true, "object", 0, List.copyOf(chaves));
+            }
+            if (raiz.isArray()) {
+                return new MetadadosResposta(contentType, charset, body.length(), bytes.length, false,
+                        true, "array", raiz.size(), List.of());
+            }
+            return new MetadadosResposta(contentType, charset, body.length(), bytes.length, false,
+                    true, "scalar", 0, List.of());
+        } catch (Exception ignorada) {
+            return new MetadadosResposta(contentType, charset, body.length(), bytes.length, false,
+                    false, "non-json", 0, List.of());
         }
     }
 
@@ -225,4 +275,15 @@ public class MercadoPagoOrdersClient {
             return new DiagnosticoErro("unavailable", "unavailable", List.of(), List.of(), false);
         }
     }
+
+    private record MetadadosResposta(
+            String contentType,
+            String charset,
+            int tamanhoCaracteres,
+            int tamanhoBytes,
+            boolean bodyVazio,
+            boolean jsonParseavel,
+            String tipoJson,
+            int quantidadeElementos,
+            List<String> chavesPrimeiroNivel) {}
 }
