@@ -1,13 +1,21 @@
 package com.kaio.runtracker.ai.agent;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
 import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.time.LocalDate;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -25,6 +33,20 @@ class TrainingPlanAgentTest {
     private final TrainingPlanValidator validator = mock(TrainingPlanValidator.class);
     private final AgentExecutionContext context = new AgentExecutionContext(
             new GerarPlanoTreinoRequestDTO(), 4, LocalDate.of(2026, 1, 5), "teste-1");
+    private final Logger logger = (Logger) LoggerFactory.getLogger(TrainingPlanAgent.class);
+    private ListAppender<ILoggingEvent> appender;
+
+    @BeforeEach
+    void capturarLogs() {
+        appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+    }
+
+    @AfterEach
+    void limparLogs() {
+        logger.detachAppender(appender);
+    }
 
     @Test
     void aprovaNaPrimeiraTentativa() {
@@ -142,6 +164,63 @@ class TrainingPlanAgentTest {
                 any(), any(), validacaoCaptor.capture(), revisaoCaptor.capture());
         assertEquals(2, validacaoCaptor.getValue().getErrors().size());
         assertEquals(1, revisaoCaptor.getValue().errors().size());
+    }
+
+    @Test
+    void registraApontamentosIndividualmenteComTentativaLimiteESanitizacaoSemAlterarResultado() {
+        PlanoTreinoIAResponseDTO original = new PlanoTreinoIAResponseDTO();
+        PlanoTreinoIAResponseDTO corrigido = new PlanoTreinoIAResponseDTO();
+        corrigido.setResumo("PLANO_COMPLETO_NAO_DEVE_APARECER");
+        ValidationResult invalido = new ValidationResult(List.of("forçar correção"), List.of());
+        List<String> erros = new ArrayList<>(List.of(
+                "Linha 1\nLinha 2 cliente@example.com 550e8400-e29b-41d4-a716-446655440000 "
+                        + "Bearer credencial-secreta eyJhbGciOiJIUzI1NiJ9.cGF5bG9hZA.assinatura "
+                        + "sk-12345678901234567890 token=segredo123",
+                "x".repeat(350)));
+        for (int indice = 3; indice <= 12; indice++) erros.add("erro-" + indice);
+        ReviewResult reprovado = new ReviewResult(
+                false,
+                erros,
+                List.of("warning um", "warning dois"),
+                "SUMMARY_NAO_DEVE_APARECER");
+        when(generator.generate(context)).thenReturn(original);
+        when(validator.validate(original, context)).thenReturn(invalido);
+        when(reviewer.review(original, context)).thenReturn(ReviewResult.approved());
+        when(generator.correct(original, context, invalido, ReviewResult.approved()))
+                .thenReturn(corrigido);
+        when(validator.validate(corrigido, context)).thenReturn(ValidationResult.valid());
+        when(reviewer.review(corrigido, context)).thenReturn(reprovado);
+
+        PlanoTreinoReprovadoException exception = assertThrows(
+                PlanoTreinoReprovadoException.class,
+                () -> agent(1).execute(context));
+
+        assertThat(exception.getErrors()).containsExactlyElementsOf(erros);
+        String log = logCompleto();
+        assertThat(log).contains(
+                "id=teste-1, tentativa=1, severidade=ERROR, indice=1",
+                "Linha 1 Linha 2 [REDACTED_EMAIL] [REDACTED_UUID]",
+                "Bearer [REDACTED] [REDACTED_JWT] [REDACTED_API_KEY] [REDACTED_CREDENTIAL]",
+                "severidade=ERROR, indice=2",
+                "... [truncado]",
+                "severidade=WARNING, indice=1, mensagem=warning um",
+                "severidade=WARNING, indice=2, mensagem=warning dois",
+                "severidade=ERROR, omitidos=2");
+        assertThat(log).doesNotContain(
+                "cliente@example.com",
+                "550e8400-e29b-41d4-a716-446655440000",
+                "credencial-secreta",
+                "eyJhbGciOiJIUzI1NiJ9.cGF5bG9hZA.assinatura",
+                "sk-12345678901234567890",
+                "segredo123",
+                "PLANO_COMPLETO_NAO_DEVE_APARECER",
+                "SUMMARY_NAO_DEVE_APARECER");
+    }
+
+    private String logCompleto() {
+        return appender.list.stream()
+                .map(ILoggingEvent::getFormattedMessage)
+                .reduce("", (acumulado, mensagem) -> acumulado + mensagem + "\n");
     }
 
     private TrainingPlanAgent agent(int tentativas) {
