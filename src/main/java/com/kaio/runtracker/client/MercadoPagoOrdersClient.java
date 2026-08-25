@@ -158,6 +158,10 @@ public class MercadoPagoOrdersClient {
             coletarDetalhes(raiz.get("cause"), codigosCausa, camposInvalidos);
             coletarDetalhes(raiz.get("causes"), codigosCausa, camposInvalidos);
             coletarDetalhes(raiz.get("details"), codigosCausa, camposInvalidos);
+            Set<String> mensagensErros = new LinkedHashSet<>();
+            coletarErros(raiz.get("errors"), codigosCausa, camposInvalidos, mensagensErros);
+            if (codigo == null && !codigosCausa.isEmpty()) codigo = codigosCausa.iterator().next();
+            if (mensagem == null && !mensagensErros.isEmpty()) mensagem = mensagensErros.iterator().next();
 
             boolean disponivel = codigo != null || mensagem != null
                     || !codigosCausa.isEmpty() || !camposInvalidos.isEmpty();
@@ -216,13 +220,35 @@ public class MercadoPagoOrdersClient {
     private void coletarDetalhes(JsonNode no, Set<String> codigos, Set<String> campos) {
         if (no == null || no.isNull()) return;
         if (no.isArray()) {
-            no.forEach(item -> coletarDetalhes(item, codigos, campos));
+            for (int indice = 0; indice < Math.min(no.size(), 10); indice++) {
+                coletarDetalhes(no.get(indice), codigos, campos);
+            }
             return;
         }
         if (!no.isObject()) return;
 
         adicionarSeSeguro(codigos, primeiroTexto(no, "code", "error", "error_code"));
         adicionarSeSeguro(campos, primeiroTexto(no, "field", "property", "parameter"));
+    }
+
+    private void coletarErros(
+            JsonNode errors,
+            Set<String> codigos,
+            Set<String> campos,
+            Set<String> mensagens) {
+        if (errors == null || !errors.isArray()) return;
+        for (int indice = 0; indice < Math.min(errors.size(), 10); indice++) {
+            JsonNode erro = errors.get(indice);
+            if (!erro.isObject()) continue;
+
+            adicionarSeSeguro(codigos, primeiroTexto(erro, "code", "error", "error_code"));
+            adicionarSeSeguro(campos, primeiroTexto(erro, "field", "property", "parameter"));
+            String mensagem = sanitizarMensagem(primeiroTexto(erro, "message"));
+            if (mensagem != null && mensagens.size() < 10) mensagens.add(mensagem);
+            coletarDetalhes(erro.get("cause"), codigos, campos);
+            coletarDetalhes(erro.get("causes"), codigos, campos);
+            coletarDetalhes(erro.get("details"), codigos, campos);
+        }
     }
 
     private void adicionarSeSeguro(Set<String> destino, String valor) {

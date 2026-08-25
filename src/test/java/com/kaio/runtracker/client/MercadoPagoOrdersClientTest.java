@@ -159,6 +159,57 @@ class MercadoPagoOrdersClientTest {
                 "bodyLengthChars=0", "bodyLengthBytes=0", "bodyEmpty=true", "jsonType=empty");
     }
 
+    @Test
+    void extraiArrayErrorsComMultiplosErrosCamposEMensagemSanitizada() {
+        String email = "cliente-secreto@example.com";
+        String externalReference = "550e8400-e29b-41d4-a716-446655440000";
+        String resposta = """
+                {
+                  "errors": [
+                    {
+                      "code": "invalid_email_for_sandbox",
+                      "message": "Email cliente-secreto@example.com na referência 550e8400-e29b-41d4-a716-446655440000",
+                      "field": "payer.email"
+                    },
+                    {
+                      "error_code": "invalid_total_amount",
+                      "property": "total_amount",
+                      "details": [{"code": "amount_mismatch", "parameter": "transactions.payments"}]
+                    }
+                  ],
+                  "conteudo_desconhecido": "valor-secreto-nao-logar"
+                }
+                """;
+        ClienteMock mock = clienteComResposta(BAD_REQUEST, resposta, "token-teste");
+
+        assertThatThrownBy(() -> criarOrder(mock)).isInstanceOfSatisfying(PagamentoException.class,
+                erro -> assertThat(erro.getStatus()).isEqualTo(BAD_GATEWAY));
+
+        mock.server().verify();
+        assertThat(logCompleto())
+                .contains(
+                        "mpErrorCode=invalid_email_for_sandbox",
+                        "mpMessage=Email [REDACTED] na referência [REDACTED]",
+                        "causeCodes=[invalid_email_for_sandbox, invalid_total_amount, amount_mismatch]",
+                        "invalidFields=[payer.email, total_amount, transactions.payments]",
+                        "mpErrorDetails=available")
+                .doesNotContain(email, externalReference, "valor-secreto-nao-logar", resposta);
+    }
+
+    @Test
+    void ignoraErrorsEmFormatoInesperadoSemRegistrarValores() {
+        String resposta = "{\"errors\":{\"code\":\"nao-deve-ser-extraido\",\"message\":\"segredo-nao-logar\"}}";
+        ClienteMock mock = clienteComResposta(BAD_REQUEST, resposta, "token-teste");
+
+        assertThatThrownBy(() -> criarOrder(mock)).isInstanceOf(PagamentoException.class);
+
+        mock.server().verify();
+        assertThat(logCompleto())
+                .contains("topLevelKeys=[errors]", "mpErrorCode=unavailable",
+                        "mpMessage=unavailable", "mpErrorDetails=unavailable")
+                .doesNotContain("nao-deve-ser-extraido", "segredo-nao-logar", resposta);
+    }
+
     private void criarOrder(ClienteMock mock) {
         mock.client().criarOrderPix("cliente@example.com", "referencia", "idempotencia",
                 new BigDecimal("12.90"));
