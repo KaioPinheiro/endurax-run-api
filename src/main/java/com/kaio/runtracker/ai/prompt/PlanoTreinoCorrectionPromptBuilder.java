@@ -28,11 +28,28 @@ public class PlanoTreinoCorrectionPromptBuilder {
         return """
                 Corrija o plano abaixo e retorne somente o JSON completo no mesmo contrato.
 
-                Regras:
+                Princípio obrigatório da correção:
+                - Corrija somente os problemas apontados. Não reconstrua livremente o plano
+                  quando uma alteração localizada for suficiente.
+                - Preserve integralmente semanas, dias, treinos e demais partes válidas que
+                  não precisam mudar. Faça a menor alteração necessária.
+                - Avisos orientam melhorias, mas não justificam reconstruir partes válidas.
+
+                Invariantes estruturais que toda correção deve preservar:
                 - Mantenha exatamente %d semanas e nunca ultrapasse 6.
-                - Preserve semanas e treinos válidos; altere somente o necessário.
-                - Use somente os dias selecionados: %s.
-                - Mantenha a quantidade semanal de treinos igual à quantidade de dias selecionados.
+                - Em TODAS as semanas, mantenha cada dia de corrida selecionado exatamente
+                  uma vez: %s. Nenhum desses dias pode desaparecer ou virar descanso.
+                - Não crie corrida em dia não selecionado e não duplique dias.
+                - Mantenha em cada semana exatamente a quantidade de treinos de corrida
+                  correspondente à quantidade de dias selecionados.
+                - Preserve a ordem das semanas, a estrutura esperada e o contrato JSON.
+                - Preserve objetivo, duração do ciclo, contexto de prova quando aplicável
+                  e restrições ou lesão informadas.
+
+                Como corrigir sem destruir a estrutura:
+                - Se houver intensidade, pace ou carga excessiva em um dia selecionado,
+                  reduza intensidade, volume, pace ou repetições, troque o tipo ou transforme
+                  o treino em leve; NÃO remova o dia de corrida.
                 - Use no máximo um intervalado e dois treinos intensos por semana.
                 - Não coloque treinos intensos em dias consecutivos.
                 - Inclua treino leve ou regenerativo e longão quando necessário.
@@ -40,6 +57,13 @@ public class PlanoTreinoCorrectionPromptBuilder {
                 - Após uma prova próxima, programe somente recuperação e retorno progressivo; não use treinos preparatórios como se a prova ainda não tivesse ocorrido.
                 - Se o atleta não corre 5 km direto, mantenha corrida/caminhada conservadora em todas as sessões, sem treinos intensos.
                 - Não invente dados e não altere o contrato JSON.
+
+                Antes de responder, faça uma conferência final silenciosa:
+                - todos os dias selecionados continuam presentes como corrida em cada semana;
+                - nenhuma semana perdeu treino e a quantidade de corridas continua correta;
+                - não foi criada corrida em dia indevido nem dia duplicado;
+                - quantidade, ordem e estrutura das semanas continuam válidas;
+                - os problemas apontados foram tratados sem criar novos erros estruturais.
 
                 Contexto: objetivo=%s; corre5KmDireto=%s; tempo5Km=%s;
                 maiorDistancia=%s; experiência=%s; volume=%s; distância=%s;
