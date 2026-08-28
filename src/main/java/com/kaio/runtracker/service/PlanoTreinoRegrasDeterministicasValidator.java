@@ -8,10 +8,20 @@ import java.text.Normalizer;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Locale;
+import java.util.Set;
 
 @Component
 public class PlanoTreinoRegrasDeterministicasValidator {
     static final int LEAD_MINIMO_PROVA_DIAS = 14;
+    private static final String EXPERIENCIA_MENOS_6_MESES = "Menos de 6 meses";
+    private static final Set<String> OBJETIVOS_MENOS_6_MESES = Set.of(
+            "Começar a correr",
+            "Melhorar condicionamento",
+            "Emagrecer",
+            "Primeiros 5 km",
+            "Primeiros 10 km",
+            "Melhorar tempo nos 5 km",
+            "Melhorar tempo nos 10 km");
 
     private final Clock clock;
 
@@ -32,6 +42,7 @@ public class PlanoTreinoRegrasDeterministicasValidator {
                         "A prova deve estar marcada com pelo menos 14 dias de antecedência.");
             }
         }
+        validarCompatibilidadeExperienciaObjetivo(request);
         validarMaratona(request);
     }
 
@@ -47,6 +58,7 @@ public class PlanoTreinoRegrasDeterministicasValidator {
             throw new IllegalArgumentException(
                     "Escolha uma duração de 4, 5 ou 6 semanas.");
         }
+        validarCompatibilidadeExperienciaObjetivo(request);
         validarMaratona(request);
     }
 
@@ -84,6 +96,15 @@ public class PlanoTreinoRegrasDeterministicasValidator {
         if (!experienciaMaratonaPermitida(request.getExperienciaCorrida())) {
             throw new IllegalArgumentException(
                     "Para plano de maratona, a experiencia na corrida deve ser a partir de 1 a 3 anos.");
+        }
+    }
+
+    private void validarCompatibilidadeExperienciaObjetivo(
+            GerarPlanoTreinoRequestDTO request) {
+        if (EXPERIENCIA_MENOS_6_MESES.equals(request.getExperienciaCorrida())
+                && !OBJETIVOS_MENOS_6_MESES.contains(request.getObjetivo())) {
+            throw new IllegalArgumentException(
+                    "Escolha um objetivo compatível com sua experiência na corrida.");
         }
     }
 

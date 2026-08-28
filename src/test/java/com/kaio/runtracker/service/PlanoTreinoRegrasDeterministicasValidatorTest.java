@@ -86,6 +86,72 @@ class PlanoTreinoRegrasDeterministicasValidatorTest {
                 () -> validator.prepararNovaSolicitacaoPublicaV1(request));
     }
 
+    @Test
+    void menosDeSeisMesesAceitaSomenteObjetivosAteDezKm() {
+        List<String> permitidos = List.of(
+                "Começar a correr",
+                "Melhorar condicionamento",
+                "Emagrecer",
+                "Primeiros 5 km",
+                "Primeiros 10 km",
+                "Melhorar tempo nos 5 km",
+                "Melhorar tempo nos 10 km");
+
+        for (String objetivo : permitidos) {
+            GerarPlanoTreinoRequestDTO request = requestV1(objetivo, "Menos de 6 meses");
+            assertDoesNotThrow(() -> validator.prepararNovaSolicitacaoPublicaV1(request), objetivo);
+        }
+    }
+
+    @Test
+    void menosDeSeisMesesRejeitaObjetivosDeMeiaEMaratona() {
+        List<String> bloqueados = List.of(
+                "Primeira Meia Maratona",
+                "Primeira Maratona",
+                "Melhorar tempo na Meia Maratona",
+                "Melhorar tempo na Maratona");
+
+        for (String objetivo : bloqueados) {
+            GerarPlanoTreinoRequestDTO request = requestV1(objetivo, "Menos de 6 meses");
+            IllegalArgumentException erro = assertThrows(IllegalArgumentException.class,
+                    () -> validator.prepararNovaSolicitacaoPublicaV1(request), objetivo);
+            assertEquals("Escolha um objetivo compatível com sua experiência na corrida.",
+                    erro.getMessage());
+        }
+    }
+
+    @Test
+    void solicitacaoPersistidaIncompativelTambemEhRejeitadaAntesDoPix() {
+        GerarPlanoTreinoRequestDTO request = requestV1(
+                "Primeira Meia Maratona", "Menos de 6 meses");
+
+        assertThrows(IllegalArgumentException.class,
+                () -> validator.validarSolicitacaoPersistidaAntesDoPix(request));
+    }
+
+    @Test
+    void experienciaMaiorMantemObjetivosAtuais() {
+        for (String objetivo : List.of("Primeira Meia Maratona", "Primeira Maratona")) {
+            GerarPlanoTreinoRequestDTO request = requestV1(objetivo, "1 a 3 anos");
+            if (objetivo.equals("Primeira Maratona")) {
+                request.setDistanciaAlvo("42 km");
+                request.setVolumeSemanalAtual("40-60 km");
+                request.setDiasDisponiveis(List.of(
+                        "segunda-feira", "terça-feira", "quinta-feira", "domingo"));
+            }
+            assertDoesNotThrow(() -> validator.prepararNovaSolicitacaoPublicaV1(request), objetivo);
+        }
+    }
+
+    private GerarPlanoTreinoRequestDTO requestV1(String objetivo, String experiencia) {
+        GerarPlanoTreinoRequestDTO request = requestProva(LocalDate.of(2026, 8, 3));
+        request.setObjetivo(objetivo);
+        request.setExperienciaCorrida(experiencia);
+        request.setPossuiProva(false);
+        request.setDuracaoSemanas(4);
+        return request;
+    }
+
     private GerarPlanoTreinoRequestDTO requestProva(LocalDate data) {
         GerarPlanoTreinoRequestDTO request = new GerarPlanoTreinoRequestDTO();
         request.setObjetivo("Melhorar tempo nos 10 km");
