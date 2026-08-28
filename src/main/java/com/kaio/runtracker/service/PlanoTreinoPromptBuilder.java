@@ -3,11 +3,14 @@ package com.kaio.runtracker.service;
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
 import com.kaio.runtracker.ai.prompt.PromptObjetivoFactory;
 import com.kaio.runtracker.ai.prompt.PaceAlvoCalculator;
+import com.kaio.runtracker.ai.agent.PlanoTreinoCalendario;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.text.Normalizer;
+import java.util.Locale;
 
 @Service
 public class PlanoTreinoPromptBuilder {
@@ -29,25 +32,34 @@ public class PlanoTreinoPromptBuilder {
     }
 
     public String criarPrompt(GerarPlanoTreinoRequestDTO request, int duracaoSemanas) {
+        return criarPrompt(request, duracaoSemanas, LocalDate.now());
+    }
+
+    public String criarPrompt(
+            GerarPlanoTreinoRequestDTO request,
+            int duracaoSemanas,
+            LocalDate dataInicio) {
         return """
                 Gere um plano completo de corrida com exatamente %d semana(s).
 
                 Regras fixas:
                 - Use corrida somente nos dias disponiveis informados.
-                - Todos os dias disponiveis informados devem receber treino de corrida em todas as semanas.
-                - A quantidade de treinos de corrida por semana deve ser exatamente igual a quantidade de dias disponiveis informados.
+                - Normalmente, todos os dias disponiveis informados devem receber treino de corrida em todas as semanas.
+                - A quantidade de sessoes de corrida/competicao por semana deve ser exatamente igual a quantidade de dias disponiveis informados.
                 - Distribua tipos diferentes de corrida entre os dias disponiveis; nunca retorne somente um treino por semana.
                 - Programe no maximo um treino intervalado, de tiros ou de velocidade por semana.
                 - Programe no maximo dois treinos intensos por semana e nunca em dias consecutivos.
                 - Nos outros dias de corrida, varie entre rodagem leve ou moderada, treino de ritmo, regenerativo e longao, de forma coerente com o objetivo.
                 - Toda semana deve incluir ao menos um treino leve ou regenerativo.
                 - O longao deve ocorrer no Dia do longao informado, quando esse dia estiver preenchido.
+                %s
                 - Nao inclua educativos em aquecimento, treino principal, desaquecimento ou observacoes.
                 - Nunca programe corrida comum em dias nao selecionados como disponiveis.
-                - Se houver prova marcada, a prova/competicao pode aparecer no dia real da prova, mesmo fora dos dias disponiveis.
+                - EXCECAO: se a prova estiver dentro do ciclo e ocorrer em dia nao selecionado, ela deve substituir exatamente um treino normal da semana. Nesse caso, deixe exatamente um dia selecionado sem corrida, nao adicione sessao extra e mantenha o total semanal de sessoes igual ao total de dias escolhidos.
+                - Ao inserir a competicao, use tipo "Prova" e um titulo que contenha "Prova", para distingui-la inequivocamente de uma corrida comum.
                 - Progrida de forma coerente e evite aumento brusco de volume.
                 - Nao repita semanas identicas sem justificativa.
-                - Reduza a carga antes da prova.
+                - Quando a prova estiver dentro deste ciclo, reduza a carga antes dela.
                 - Quando a prova estiver dentro das quatro semanas do plano, use o período posterior somente para recuperação e retorno progressivo, sem tratá-lo como preparação para uma prova futura.
                 - Nao invente informacoes ausentes.
                 - Ajuste intensidade, volume e complexidade ao perfil, objetivo, ritmo, idade, lesoes e observacoes.
@@ -57,10 +69,28 @@ public class PlanoTreinoPromptBuilder {
                 - Retorne apenas JSON valido, sem markdown. 
 
                 Criterios de um plano factivel:
+                - Considere duracaoSemanas somente como o ciclo solicitado. As 4 a 6 semanas
+                  nao precisam concluir toda a preparacao para o objetivo nem atingir a
+                  distancia-alvo. Nao force o longao a alcancar a distancia-alvo dentro deste
+                  ciclo; priorize progressao compativel com experiencia, volume semanal atual,
+                  maior distancia ja corrida, duracao do ciclo e recuperacao disponivel.
                 - Interprete a faixa de volume semanal como um intervalo de referencia e nao assuma automaticamente o menor valor.
                 %s
                 - Mantenha em geral 75%% a 85%% do tempo ou volume em intensidade confortavel.
-                - Nao coloque sessoes exigentes em dias consecutivos e limite o aumento semanal de carga a aproximadamente 10%%.
+                - Nao coloque sessoes exigentes em dias consecutivos. Como orientacao contextual
+                  de carga semanal geral, evite aumentos muito acima de aproximadamente 10%%.
+                - Para a duracao do longao entre semanas consecutivas, use o limite objetivo:
+                  aumento maximo = maior entre 15 min e 15%% da duracao do longao anterior.
+                  Manter ou reduzir o longao e permitido; nao force crescimento monotonico.
+                - Para qualquer objetivo, trate a maior distancia ja corrida como referencia da
+                  base atual, nao como teto permanente. E permitido evoluir acima dela quando a
+                  progressao for coerente com experiencia, volume semanal, recuperacao e duracao
+                  do ciclo; nao crie salto desproporcional em uma sessao apenas para demonstrar progressao.
+                - Quando a distancia-alvo for menor ou igual a maior distancia ja corrida, isso nao
+                  exige que o longao continue crescendo. Mesmo com Dia do longao preenchido, ele
+                  pode permanecer estavel, crescer moderadamente ou ser reduzido conforme objetivo
+                  e carga global; a progressao tambem pode vir de consistencia, especificidade,
+                  distribuicao de intensidade e recuperacao.
                 - Paces, distancias e duracoes devem partir da capacidade atual, nunca apenas da meta desejada.
                 - Diferencie sempre PACE-ALVO DA META, RITMO CONFORTAVEL ATUAL e RITMOS DE TREINO.
                 - O pace-alvo informado nos dados e o pace matematico necessario para a meta; os ritmos de treino nao precisam ser iguais a ele e devem respeitar a capacidade atual.
@@ -78,7 +108,14 @@ public class PlanoTreinoPromptBuilder {
                 - Use idade, lesao e observacoes para decidir a progressao: atletas mais velhos, lesionados, com dor ou com fatores de risco devem ter blocos de trote menores, mais caminhada e progressao mais lenta.
                 - Somente para atleta sem lesao relevante, sem relato de dor e com idade e adaptacao compativeis, as semanas finais podem conter blocos mais longos de trote ou corrida leve continua; mantenha intensidade confortavel e inclua pausas caminhando quando necessario.
                 - Se o atleta corre 5 km direto, use o tempo informado somente como referencia da capacidade atual, sem transformar esse resultado em promessa de desempenho.
-                - Para meia maratona e maratona, considere a maior distancia ja percorrida como limite da base atual; nao prescreva salto brusco de longao a partir dela.
+
+                Antes de responder, faca uma conferencia final silenciosa de carga:
+                - Em cada semana, some distanciaKm de todas as sessoes de corrida e compare o total
+                  com o volume semanal atual como referencia de carga habitual, nao como teto rigido.
+                - Identifique a maior sessao individual e confronte-a com a maior distancia ja corrida,
+                  considerando experiencia, objetivo, distancia-alvo, recuperacao e duracao do ciclo.
+                - Ajuste incoerencias evidentes e saltos desproporcionais sem necessidade esportiva,
+                  mantendo permitida a progressao moderada acima das referencias atuais.
 
                 Regras de texto:
                 - resumo: no maximo 3 frases.
@@ -165,8 +202,9 @@ public class PlanoTreinoPromptBuilder {
                 - Observacoes: %s
                 """.formatted(
                 duracaoSemanas,
+                orientacaoLongaoObrigatorio(request),
                 promptObjetivoFactory.criarPrompt(request).strip(),
-                orientacaoCiclo(request),
+                orientacaoCiclo(request, duracaoSemanas, dataInicio),
                 duracaoSemanas,
                 request.getObjetivo(),
                 distanciaPerformance(request),
@@ -183,7 +221,7 @@ public class PlanoTreinoPromptBuilder {
                 request.getDiasDisponiveis(),
                 valor(request.getDiaLongao()),
                 Boolean.TRUE.equals(request.getPossuiProva()) ? "Sim" : "Nao",
-                LocalDate.now(),
+                dataInicio,
                 request.getDataProva() == null ? "Nao informado" : request.getDataProva(),
                 valor(request.getDistanciaProva()),
                 valor(request.getObjetivoProva()),
@@ -194,9 +232,63 @@ public class PlanoTreinoPromptBuilder {
         );
     }
 
+    public String orientacaoLongaoObrigatorio(GerarPlanoTreinoRequestDTO request) {
+        String contexto = normalizar(String.join(" ",
+                valor(request.getObjetivo()),
+                valor(request.getDistanciaAlvo()),
+                valor(request.getDistanciaProva())));
+        boolean exigeLongao = contexto.contains("maratona")
+                || contexto.matches(".*\\b(?:21|42)\\s*(?:km|k)\\b.*");
+        if (!exigeLongao) {
+            return "";
+        }
+        return "- Para objetivos de meia maratona ou maratona, TODA semana deve conter "
+                + "exatamente um treino no Dia do longao informado, usando literalmente "
+                + "o valor estrutural tipo=\"Longão\". Nao crie sessao extra nem aumente "
+                + "volume ou intensidade apenas para satisfazer essa classificacao.";
+    }
+
     public String orientacaoCiclo(GerarPlanoTreinoRequestDTO request) {
+        int duracao = request.getDuracaoSemanas() == null ? 4 : request.getDuracaoSemanas();
+        return orientacaoCiclo(request, duracao, LocalDate.now());
+    }
+
+    private String normalizar(String valor) {
+        if (!StringUtils.hasText(valor)) {
+            return "";
+        }
+        return Normalizer.normalize(valor, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase(Locale.ROOT);
+    }
+
+    public String orientacaoCiclo(
+            GerarPlanoTreinoRequestDTO request,
+            int duracaoSemanas,
+            LocalDate dataInicio) {
         if (Boolean.TRUE.equals(request.getPossuiProva())) {
-            if (provaProxima(request)) {
+            PlanoTreinoCalendario.ContextoProva calendario =
+                    PlanoTreinoCalendario.contexto(request, duracaoSemanas, dataInicio);
+            if (!calendario.provaDentroDoCiclo()) {
+                return """
+                        - A prova esta alem da janela maxima deste ciclo de 6 semanas.
+                        - Gere um bloco de preparacao direcionado a prova, sem prometer preparacao completa.
+                        - Nao insira a competicao neste ciclo, nao exija taper final e nao prescreva recuperacao pos-prova.
+                        - Nao finja que o ciclo termina na competicao.
+                        """;
+            }
+            String ancora = """
+                    - Data de inicio do ciclo: %s.
+                    - Segunda-feira que inicia a semana 1: %s.
+                    - Data da prova: %s.
+                    - Dia da semana da prova: %s.
+                    - Numero esperado da semana da prova: %d.
+                    - Posicione a competicao exatamente nessa semana e nesse dia.
+                    """.formatted(
+                    calendario.dataInicio(), calendario.inicioSemana1(),
+                    calendario.dataProva(), calendario.diaSemanaProva(),
+                    calendario.numeroSemanaProva());
+            if (provaProxima(request, dataInicio)) {
                 return """
                         - A prova está a menos de quatro semanas, mas o plano deve manter exatamente quatro semanas.
                         - Posicione a prova na semana e no dia correspondentes à data informada.
@@ -206,13 +298,12 @@ public class PlanoTreinoPromptBuilder {
                         - Não trate os treinos posteriores como preparação para uma prova que já ocorreu.
                         - Preencha alerta com uma explicação clara de que o prazo é insuficiente para um ciclo completo e de que o plano continua com recuperação e evolução após o evento.
                         - Modelo de alerta: "Sua prova está muito próxima para a realização de um ciclo completo de preparação. O plano foi estruturado com quatro semanas, utilizando o período anterior à prova para uma preparação segura e as semanas seguintes para recuperação e continuidade dos treinos."
-                        """;
+                        """ + ancora;
             }
-            return """
+            return ancora + """
                     - Oriente o ciclo pela prova informada: data, distancia, meta e importancia.
                     - O ciclo com prova deve ter no minimo 4 e no maximo 6 semanas.
-                    - Nao programe nenhum treino depois da data da prova.
-                    - Se a prova estiver a mais de 6 semanas, gere apenas o primeiro ciclo orientado a ela.
+                    - Reduza a carga antes da prova de forma coerente e use somente recuperacao segura depois dela, se restarem dias no ciclo.
                     """;
         }
 
@@ -222,11 +313,11 @@ public class PlanoTreinoPromptBuilder {
                 """;
     }
 
-    private boolean provaProxima(GerarPlanoTreinoRequestDTO request) {
+    private boolean provaProxima(GerarPlanoTreinoRequestDTO request, LocalDate dataInicio) {
         if (request.getDataProva() == null) {
             return false;
         }
-        long dias = ChronoUnit.DAYS.between(LocalDate.now(), request.getDataProva());
+        long dias = ChronoUnit.DAYS.between(dataInicio, request.getDataProva());
         return dias >= 0 && dias < 28;
     }
 

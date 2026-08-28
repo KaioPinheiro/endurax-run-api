@@ -5,6 +5,7 @@ import com.kaio.runtracker.ai.prompt.PromptObjetivoFactory;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -82,6 +83,11 @@ class PlanoTreinoPromptBuilderTest {
 
         assertTrue(prompt.contains("PACE-ALVO DA META): Nao se aplica"));
         assertFalse(prompt.contains("PACE-ALVO DA META): 4:00 min/km"));
+        assertTrue(prompt.contains("duracaoSemanas somente como o ciclo solicitado"));
+        assertTrue(prompt.contains("nao precisam concluir toda a preparacao"));
+        assertTrue(prompt.contains("Nao force o longao a alcancar a distancia-alvo"));
+        assertTrue(prompt.contains("aumento maximo = maior entre 15 min e 15%"));
+        assertTrue(prompt.contains("nao force crescimento monotonico"));
     }
 
     @Test
@@ -139,6 +145,7 @@ class PlanoTreinoPromptBuilderTest {
         request.setDistanciaAlvo("21 km");
         request.setDiasDisponiveis(List.of(
                 "terça-feira", "quinta-feira", "domingo"));
+        request.setDiaLongao("domingo");
         request.setPossuiProva(false);
         request.setPossuiLesao(false);
 
@@ -147,5 +154,100 @@ class PlanoTreinoPromptBuilderTest {
         assertTrue(prompt.contains("Tempo atual nos 5 km: 29 minutos"));
         assertTrue(prompt.contains("Maior distancia ja percorrida: 14 km"));
         assertTrue(prompt.contains("use o tempo dos 5 km para estimar de forma prudente"));
+        assertTrue(prompt.contains("TODA semana deve conter exatamente um treino"));
+        assertTrue(prompt.contains("tipo=\"Longão\""));
+        assertTrue(prompt.contains("Dia do longao informado"));
+    }
+
+    @Test
+    void maratonaExigeTipoLongaoEmTodaSemanaSemCriarSessaoExtra() {
+        GerarPlanoTreinoRequestDTO request = new GerarPlanoTreinoRequestDTO();
+        request.setObjetivo("Melhorar tempo na Maratona");
+        request.setDistanciaAlvo("42 km");
+        request.setDiasDisponiveis(List.of("terça-feira", "quinta-feira", "domingo"));
+        request.setDiaLongao("domingo");
+
+        String prompt = promptBuilder.criarPrompt(request, 6);
+
+        assertTrue(prompt.contains("TODA semana deve conter exatamente um treino"));
+        assertTrue(prompt.contains("tipo=\"Longão\""));
+        assertTrue(prompt.contains("Nao crie sessao extra nem aumente volume ou intensidade"));
+    }
+
+    @Test
+    void cincoKmNaoRecebeObrigacaoDeLongaoSemanal() {
+        GerarPlanoTreinoRequestDTO request = new GerarPlanoTreinoRequestDTO();
+        request.setObjetivo("Primeiros 5 km");
+        request.setDistanciaAlvo("5 km");
+        request.setDiasDisponiveis(List.of("terça-feira", "quinta-feira", "domingo"));
+        request.setDiaLongao("domingo");
+
+        String prompt = promptBuilder.criarPrompt(request, 4);
+
+        assertFalse(prompt.contains("TODA semana deve conter exatamente um treino"));
+        assertFalse(prompt.contains("tipo=\"Longão\""));
+    }
+
+    @Test
+    void cincoKmComBaseMaiorQueMetaRecebeOrientacaoContextualSemTetoRigido() {
+        GerarPlanoTreinoRequestDTO request = new GerarPlanoTreinoRequestDTO();
+        request.setObjetivo("Primeiros 5 km");
+        request.setDistanciaAlvo("5 km");
+        request.setCorre5KmSemCaminhar(true);
+        request.setTempo5Km("29:00");
+        request.setMaiorDistanciaCorrida("8 km");
+        request.setVolumeSemanalAtual("10-20 km");
+        request.setExperienciaCorrida("6 meses a 1 ano");
+        request.setDiasDisponiveis(List.of("terça-feira", "quinta-feira", "domingo"));
+        request.setDiaLongao("domingo");
+
+        String prompt = promptBuilder.criarPrompt(request, 5);
+
+        assertTrue(prompt.contains("maior distancia ja corrida como referencia"));
+        assertTrue(prompt.contains("base atual, nao como teto permanente"));
+        assertTrue(prompt.contains("E permitido evoluir acima dela"));
+        assertTrue(prompt.contains("exige que o longao continue crescendo"));
+        assertTrue(prompt.contains("Mesmo com Dia do longao preenchido"));
+        assertTrue(prompt.contains("some distanciaKm de todas as sessoes de corrida"));
+        assertTrue(prompt.contains("volume semanal atual como referencia de carga habitual"));
+        assertTrue(prompt.contains("maior sessao individual"));
+        assertTrue(prompt.contains("experiencia, objetivo, distancia-alvo, recuperacao e duracao do ciclo"));
+        assertTrue(prompt.contains("Corre 5 km direto sem caminhar: Sim"));
+    }
+
+    @Test
+    void provaDentroDoCicloRecebeAncorasTemporaisDeterministicas() {
+        GerarPlanoTreinoRequestDTO request = provaBase(LocalDate.of(2026, 8, 11));
+
+        String prompt = promptBuilder.criarPrompt(request, 4, LocalDate.of(2026, 7, 22));
+
+        assertTrue(prompt.contains("Segunda-feira que inicia a semana 1: 2026-07-20"));
+        assertTrue(prompt.contains("Data da prova: 2026-08-11"));
+        assertTrue(prompt.contains("Numero esperado da semana da prova: 4"));
+        assertTrue(prompt.contains("substituir exatamente um treino normal"));
+        assertTrue(prompt.contains("use tipo \"Prova\" e um titulo que contenha \"Prova\""));
+    }
+
+    @Test
+    void provaForaDoCicloNaoPedeCompeticaoTaperOuRecuperacao() {
+        GerarPlanoTreinoRequestDTO request = provaBase(LocalDate.of(2026, 10, 4));
+
+        String prompt = promptBuilder.criarPrompt(request, 6, LocalDate.of(2026, 7, 22));
+
+        assertTrue(prompt.contains("prova esta alem da janela maxima"));
+        assertTrue(prompt.contains("Nao insira a competicao neste ciclo"));
+        assertTrue(prompt.contains("nao exija taper final"));
+        assertTrue(prompt.contains("nao prescreva recuperacao pos-prova"));
+    }
+
+    private GerarPlanoTreinoRequestDTO provaBase(LocalDate dataProva) {
+        GerarPlanoTreinoRequestDTO request = new GerarPlanoTreinoRequestDTO();
+        request.setObjetivo("Melhorar tempo nos 10 km");
+        request.setDistanciaAlvo("10 km");
+        request.setDistanciaProva("10 km");
+        request.setPossuiProva(true);
+        request.setDataProva(dataProva);
+        request.setDiasDisponiveis(List.of("quinta-feira", "domingo"));
+        return request;
     }
 }

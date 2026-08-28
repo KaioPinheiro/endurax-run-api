@@ -5,6 +5,7 @@ import com.kaio.runtracker.service.PlanoTreinoPromptBuilder;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -102,6 +103,82 @@ class PlanoTreinoCorrectionPromptBuilderTest {
                     "Não crie corrida em dia não selecionado",
                     "Mantenha em cada semana exatamente a quantidade de treinos de corrida");
         }
+    }
+
+    @Test
+    void correcaoPreservaSubstituicaoEAncoraTemporalDaProva() {
+        GerarPlanoTreinoRequestDTO request = requestBase("Melhorar tempo nos 10 km", "10 km");
+        request.setPossuiProva(true);
+        request.setDistanciaProva("10 km");
+        request.setDataProva(LocalDate.of(2026, 8, 11));
+
+        String prompt = builder().criarPrompt(request, 4, "{}", List.of(), List.of(),
+                List.of("ajustar prova"), List.of(), LocalDate.of(2026, 7, 22));
+
+        assertThat(prompt).contains(
+                "substituicao de exatamente um treino normal",
+                "Segunda-feira que inicia a semana 1: 2026-07-20",
+                "Numero esperado da semana da prova: 4");
+    }
+
+    @Test
+    void correcaoAlinhaLongaoDeMeiaEMaratonaSemReconstruirTreino() {
+        for (Cenario cenario : List.of(
+                new Cenario("Primeira Meia Maratona", "21 km"),
+                new Cenario("Melhorar tempo na Maratona", "42 km"))) {
+            GerarPlanoTreinoRequestDTO request = requestBase(
+                    cenario.objetivo(), cenario.distancia());
+            request.setDiaLongao("domingo");
+
+            String prompt = builder().criarPrompt(request, 5, "{}",
+                    List.of("Semana 3: não possui longão compatível com o objetivo."),
+                    List.of(), List.of(), List.of());
+
+            assertThat(prompt).contains(
+                    "TODA semana deve conter exatamente um treino",
+                    "tipo=\"Longão\"",
+                    "prefira alterar somente o tipo para \"Longão\"",
+                    "preservando o treino e a estrutura valida existente",
+                    "Nao crie sessao extra");
+        }
+    }
+
+    @Test
+    void correcaoDeCincoKmNaoExigeLongaoSemanal() {
+        String prompt = builder().criarPrompt(
+                requestBase("Primeiros 5 km", "5 km"), 4, "{}",
+                List.of(), List.of(), List.of(), List.of());
+
+        assertThat(prompt).doesNotContain(
+                "TODA semana deve conter exatamente um treino",
+                "tipo=\"Longão\"",
+                "prefira alterar somente o tipo para \"Longão\"");
+    }
+
+    @Test
+    void correcaoConfereCargaContraBaseSemCriarTetosRigidos() {
+        GerarPlanoTreinoRequestDTO request = requestBase("Primeiros 5 km", "5 km");
+        request.setCorre5KmSemCaminhar(true);
+        request.setTempo5Km("29:00");
+        request.setMaiorDistanciaCorrida("8 km");
+        request.setVolumeSemanalAtual("10-20 km");
+        request.setExperienciaCorrida("6 meses a 1 ano");
+        request.setDiaLongao("domingo");
+
+        String prompt = builder().criarPrompt(request, 5, "{}", List.of(), List.of(),
+                List.of("Longão incompatível com a base"), List.of());
+
+        assertThat(prompt).contains(
+                "referência da carga habitual",
+                "referência da base da maior sessão",
+                "nenhum deles é teto permanente",
+                "Permita evolução coerente acima dessas referências",
+                "crescimento contínuo do longão",
+                "identifique as sessões responsáveis e faça a menor alteração necessária",
+                "some distanciaKm das sessões de corrida de cada semana",
+                "maior sessão de cada semana",
+                "duração do ciclo",
+                "mantenha coerentes distanciaKm, duracaoEstimada");
     }
 
     private PlanoTreinoCorrectionPromptBuilder builder() {

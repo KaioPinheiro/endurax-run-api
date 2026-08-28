@@ -17,8 +17,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.text.Normalizer;
 import java.time.Clock;
+import java.text.Normalizer;
 import java.util.Locale;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -38,6 +38,7 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
     private final Clock clock;
     private final ObjectMapper objectMapper;
     private final PlanoTreinoDuracaoCalculator duracaoCalculator;
+    private final PlanoTreinoRegrasDeterministicasValidator regrasValidator;
 
     @Autowired
     public GerarPlanoTreinoIAService(
@@ -62,7 +63,7 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
         this(promptBuilder, openAIService, respostaParser, Clock.systemDefaultZone());
     }
 
-    GerarPlanoTreinoIAService(
+    public GerarPlanoTreinoIAService(
             PlanoTreinoPromptBuilder promptBuilder,
             OpenAIService openAIService,
             PlanoTreinoRespostaParser respostaParser,
@@ -91,6 +92,7 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
         this.clock = clock;
         this.objectMapper = objectMapper;
         this.duracaoCalculator = new PlanoTreinoDuracaoCalculator(clock);
+        this.regrasValidator = new PlanoTreinoRegrasDeterministicasValidator(clock);
     }
 
     public PlanoTreinoIAResponseDTO gerarPlano(GerarPlanoTreinoRequestDTO request) {
@@ -126,10 +128,7 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
             duracaoSemanas = duracaoForcada == null
                     ? calcularDuracaoSemanas(request)
                     : duracaoForcada;
-            validarIdadeMinimaParaMaratona(request);
-            validarDiasMinimosParaMaratona(request);
-            validarVolumeSemanalParaMaratona(request);
-            validarExperienciaParaMaratona(request);
+            validarRegrasDeterministicas(request);
             validacaoMs = tempoMs(inicioValidacao);
 
             logger.info(
@@ -143,7 +142,8 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
 
             long inicioPrompt = System.nanoTime();
             String systemPrompt = promptBuilder.criarSystemPrompt();
-            String userPrompt = promptBuilder.criarPrompt(request, duracaoSemanas);
+            String userPrompt = promptBuilder.criarPrompt(
+                    request, duracaoSemanas, java.time.LocalDate.now(clock));
             promptMs = tempoMs(inicioPrompt);
             logger.debug(
                     "Prompt do plano preparado: geracaoId={}, systemPromptChars={}, userPromptChars={}, promptMs={}",
@@ -266,7 +266,8 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
                     validacao.getErrors(),
                     validacao.getWarnings(),
                     revisao.errors(),
-                    revisao.warnings());
+                    revisao.warnings(),
+                    context.dataInicio());
             String resposta = openAIService.enviarPromptPlanoTreino(
                     promptBuilder.criarSystemPrompt(),
                     prompt,
@@ -363,7 +364,7 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
                 + "\n- Os dias disponiveis escolhidos pelo usuario sao: "
                 + request.getDiasDisponiveis()
                 + "."
-                + "\n- Cada semana deve conter treino de corrida em todos esses dias, sem faltar nenhum."
+                + "\n- Normalmente, cada semana deve conter treino de corrida em todos esses dias, sem faltar nenhum."
                 + "\n- Retorne tipos variados e no maximo um treino intervalado por semana."
                 + "\n- Nao inclua educativos em nenhuma sessao."
                 + (StringUtils.hasText(request.getDiaLongao())
@@ -371,7 +372,8 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
                         : "")
                 + "\n- Nao retorne corrida comum em dias que nao estao nessa lista."
                 + (Boolean.TRUE.equals(request.getPossuiProva())
-                        ? "\n- Se a prova cair fora desses dias, a competicao pode aparecer no dia real da prova."
+                        ? "\n- Se a prova cair fora desses dias, ela substitui exatamente um treino normal de um dia selecionado; nao crie sessao adicional."
+                                + "\n- Identifique a competicao inequivocamente com tipo \"Prova\" e titulo contendo \"Prova\"."
                         : "")
                 + orientacaoEstruturaDuracao;
     }
@@ -418,120 +420,31 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
     }
 
     void validarDiasMinimosParaMaratona(GerarPlanoTreinoRequestDTO request) {
-        if (!ehPlanoMaratona(request)) {
-            return;
-        }
-
-        long diasDisponiveis = request.getDiasDisponiveis() == null
-                ? 0
-                : request.getDiasDisponiveis().stream()
-                        .filter(StringUtils::hasText)
-                        .map(this::normalizar)
-                        .distinct()
-                        .count();
-
-        if (diasDisponiveis < 4) {
-            throw new GerarTreinoIAException(
-                    HttpStatus.BAD_REQUEST,
-                    "Para plano de maratona, selecione pelo menos 4 dias disponiveis para treinar."
-            );
-        }
+        validarRegrasDeterministicas(request);
     }
 
     void validarIdadeMinimaParaMaratona(GerarPlanoTreinoRequestDTO request) {
-        if (!ehPlanoMaratona(request)) {
-            return;
-        }
-
-        if (request.getIdade() == null || request.getIdade() < 18) {
-            throw new GerarTreinoIAException(
-                    HttpStatus.BAD_REQUEST,
-                    "Para plano de maratona, a idade minima e 18 anos."
-            );
-        }
+        validarRegrasDeterministicas(request);
     }
 
     void validarVolumeSemanalParaMaratona(GerarPlanoTreinoRequestDTO request) {
-        if (!ehPlanoMaratona(request)) {
-            return;
-        }
-
-        if (!volumeMaratonaPermitido(request.getVolumeSemanalAtual())) {
-            throw new GerarTreinoIAException(
-                    HttpStatus.BAD_REQUEST,
-                    "Para plano de maratona, o volume semanal atual deve ser 40-60 km, 60-80 km ou 80+ km."
-            );
-        }
+        validarRegrasDeterministicas(request);
     }
 
     void validarExperienciaParaMaratona(GerarPlanoTreinoRequestDTO request) {
-        if (!ehPlanoMaratona(request)) {
-            return;
-        }
-
-        if (!experienciaMaratonaPermitida(request.getExperienciaCorrida())) {
-            throw new GerarTreinoIAException(
-                    HttpStatus.BAD_REQUEST,
-                    "Para plano de maratona, a experiencia na corrida deve ser a partir de 1 a 3 anos."
-            );
-        }
+        validarRegrasDeterministicas(request);
     }
 
-    private boolean ehPlanoMaratona(GerarPlanoTreinoRequestDTO request) {
-        return campoIndicaMaratona(request.getObjetivo())
-                || campoIndicaMaratona(request.getDistanciaAlvo())
-                || campoIndicaMaratona(request.getDistanciaProva())
-                || campoIndicaMaratona(request.getObjetivoProva())
-                || campoIndicaMaratona(request.getObservacoes());
-    }
-
-    private boolean campoIndicaMaratona(String valor) {
-        String texto = normalizar(valor);
-        if (!StringUtils.hasText(texto)) {
-            return false;
+    private void validarRegrasDeterministicas(GerarPlanoTreinoRequestDTO request) {
+        try {
+            regrasValidator.validarMaratona(request);
+        } catch (IllegalArgumentException exception) {
+            throw new GerarTreinoIAException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
-
-        if (texto.matches(".*\\b42\\s*(km|k|quilometros?)\\b.*")) {
-            return true;
-        }
-
-        return texto.contains("maratona")
-                && !texto.contains("meia maratona")
-                && !texto.contains("21 km")
-                && !texto.contains("21k");
-    }
-
-    private boolean volumeMaratonaPermitido(String valor) {
-        String texto = normalizar(valor)
-                .replace("–", "-")
-                .replace("—", "-")
-                .replaceAll("\\s+", "");
-
-        return texto.equals("40-60km")
-                || texto.equals("40a60km")
-                || texto.equals("40ate60km")
-                || texto.equals("60-80km")
-                || texto.equals("60a80km")
-                || texto.equals("60ate80km")
-                || texto.equals("80+km")
-                || texto.equals("80km+");
-    }
-
-    private boolean experienciaMaratonaPermitida(String valor) {
-        String texto = normalizar(valor);
-
-        return texto.contains("1 a 3 anos")
-                || texto.contains("1-3 anos")
-                || texto.contains("mais de 3 anos")
-                || texto.contains("mais que 3 anos")
-                || texto.contains("acima de 3 anos");
     }
 
     private String normalizar(String valor) {
-        if (!StringUtils.hasText(valor)) {
-            return "";
-        }
-
+        if (!StringUtils.hasText(valor)) return "";
         return Normalizer.normalize(valor.trim(), Normalizer.Form.NFD)
                 .replaceAll("\\p{M}", "")
                 .toLowerCase(Locale.ROOT);

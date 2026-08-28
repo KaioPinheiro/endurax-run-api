@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalAdjusters;
+import java.time.DayOfWeek;
 
 @Component
 public class PlanoTreinoDuracaoCalculator {
@@ -36,13 +38,19 @@ public class PlanoTreinoDuracaoCalculator {
         }
 
         LocalDate dataProva = request.getDataProva();
-        long diasRestantes = ChronoUnit.DAYS.between(LocalDate.now(clock), dataProva);
+        LocalDate hoje = LocalDate.now(clock);
+        long diasRestantes = ChronoUnit.DAYS.between(hoje, dataProva);
         if (diasRestantes < 0) {
             throw new GerarTreinoIAException(
                     HttpStatus.BAD_REQUEST,
                     "A data da prova não pode estar no passado.");
         }
-        int semanas = (int) Math.ceil(diasRestantes / 7.0);
+        LocalDate inicioSemana1 = hoje.with(
+                TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate segundaSemanaProva = dataProva.with(
+                TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        int semanas = Math.toIntExact(
+                ChronoUnit.WEEKS.between(inicioSemana1, segundaSemanaProva)) + 1;
         return Math.min(6, Math.max(4, semanas));
     }
 

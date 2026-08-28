@@ -3,6 +3,7 @@ package com.kaio.runtracker.ai.prompt;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kaio.runtracker.ai.agent.AgentExecutionContext;
+import com.kaio.runtracker.ai.agent.PlanoTreinoCalendario;
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
 import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
 import org.springframework.stereotype.Component;
@@ -29,6 +30,14 @@ public class PlanoTreinoReviewPromptBuilder {
                 seja plausível e não torne necessariamente o plano inválido.
                 Um erro torna valid=false. Warnings não reprovam sozinhos. Não transforme
                 dado opcional ausente em erro e não invente limites absolutos não informados.
+                Um pace mais rápido que o ritmo confortável NÃO é, isoladamente, motivo para
+                ERROR: ritmo, intervalado, velocidade, VO2 e progressivo podem legitimamente
+                ocorrer acima do ritmo confortável. Para usar ERROR por intensidade, demonstre
+                risco grave pelo contexto completo: duração do estímulo, volume intenso total,
+                repetições, recuperação, frequência semanal, progressão de carga, proximidade
+                entre sessões intensas, experiência, volume atual, maior distância e restrições.
+                Se a preocupação for apenas pace acima do confortável ou que o treino pode ser
+                exigente, use WARNING. Carga completa claramente perigosa continua sendo ERROR.
                 """;
     }
 
@@ -46,6 +55,10 @@ public class PlanoTreinoReviewPromptBuilder {
                   semanas como ciclo de desenvolvimento para o objetivo informado.
                 - Somente se possuiProva=true considere data, proximidade, posicionamento
                   da prova, recuperação relacionada ao evento e taper quando aplicável.
+                - Se a prova estiver dentro do ciclo e ocorrer em dia não selecionado, ela
+                  substitui exatamente um treino normal; isso não é erro e não aumenta o total semanal.
+                - Se a prova estiver fora do ciclo de 6 semanas, não exija competição,
+                  taper final ou recuperação pós-prova neste bloco de preparação.
                 - duracaoSemanas representa somente o ciclo solicitado ao Endurax, não
                   necessariamente toda a preparação para alcançar o objetivo final.
                 - Não reprove apenas porque o objetivo completo poderia exigir mais semanas.
@@ -64,8 +77,8 @@ public class PlanoTreinoReviewPromptBuilder {
 
                 Globalmente verifique quantidade e continuidade das semanas,
                 progressão de volume e intensidade, aumentos bruscos, repetições,
-                recuperação e adequação dos estímulos ao objetivo. Apenas quando possuiProva=true,
-                verifique redução antes da prova quando aplicável, semana/data da prova e
+                recuperação e adequação dos estímulos ao objetivo. Apenas quando possuiProva=true
+                e o contexto temporal indicar que a prova está dentro do ciclo, verifique redução antes dela, semana/data da prova e
                 coerência do período posterior ao evento. Mesmo com prova próxima, não reprove
                 apenas pela proximidade; avalie se preparação curta, alerta, recuperação e
                 retorno progressivo são coerentes com o contexto real.
@@ -93,6 +106,7 @@ public class PlanoTreinoReviewPromptBuilder {
                 distanciaProva=%s
                 possuiLesao=%s
                 restricaoOuObservacao=%s
+                contextoTemporalProva=%s
 
                 Plano:
                 %s
@@ -118,6 +132,7 @@ public class PlanoTreinoReviewPromptBuilder {
                         ? valor(request.getDistanciaProva()) : "Não se aplica",
                 Boolean.TRUE.equals(request.getPossuiLesao()) ? "Sim" : "Não",
                 valor(request.getObservacoes()),
+                contextoTemporal(context),
                 objectMapper.writeValueAsString(plano));
     }
 
@@ -135,5 +150,21 @@ public class PlanoTreinoReviewPromptBuilder {
             return "Não informado";
         }
         return valor ? "Sim" : "Não";
+    }
+
+    private String contextoTemporal(AgentExecutionContext context) {
+        if (!Boolean.TRUE.equals(context.request().getPossuiProva())) {
+            return "Não se aplica";
+        }
+        PlanoTreinoCalendario.ContextoProva calendario = PlanoTreinoCalendario.contexto(
+                context.request(), context.duracaoSemanas(), context.dataInicio());
+        if (!calendario.provaDentroDoCiclo()) {
+            return "Prova fora do ciclo; gerar somente preparação direcionada";
+        }
+        return "inicioCiclo=" + calendario.dataInicio()
+                + ", inicioSemana1=" + calendario.inicioSemana1()
+                + ", dataProva=" + calendario.dataProva()
+                + ", diaProva=" + calendario.diaSemanaProva()
+                + ", semanaProva=" + calendario.numeroSemanaProva();
     }
 }

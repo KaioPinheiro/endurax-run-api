@@ -54,6 +54,23 @@ class PlanoTreinoReviewPromptBuilderTest {
     }
 
     @Test
+    void reviewRecebeSemanaDiaERegraDeSubstituicaoDaProva() throws Exception {
+        GerarPlanoTreinoRequestDTO request = requestBase("Melhorar tempo nos 10 km", "10 km");
+        request.setPossuiProva(true);
+        request.setDataProva(LocalDate.of(2026, 1, 27));
+        request.setDistanciaProva("10 km");
+
+        String prompt = builder.criarPrompt(new PlanoTreinoIAResponseDTO(),
+                new AgentExecutionContext(request, 4, LocalDate.of(2026, 1, 7), "teste"));
+
+        assertThat(prompt).contains(
+                "substitui exatamente um treino normal",
+                "inicioSemana1=2026-01-05",
+                "dataProva=2026-01-27",
+                "semanaProva=4");
+    }
+
+    @Test
     void regraDoCicloIndependeDaDistancia() throws Exception {
         List<Cenario> cenarios = List.of(
                 new Cenario("Melhorar tempo nos 5 km", "5 km"),
@@ -108,7 +125,14 @@ class PlanoTreinoReviewPromptBuilderTest {
                 "carga ou progressão claramente incompatível",
                 "Use WARNING para preocupação, incerteza ou melhoria recomendável",
                 "Warnings não reprovam sozinhos",
-                "não invente limites absolutos");
+                "não invente limites absolutos",
+                "pace mais rápido que o ritmo confortável NÃO é, isoladamente, motivo",
+                "use WARNING",
+                "Carga completa claramente perigosa continua sendo ERROR",
+                "duração do estímulo",
+                "volume intenso total",
+                "recuperação",
+                "progressão de carga");
     }
 
     private String prompt(GerarPlanoTreinoRequestDTO request) throws Exception {

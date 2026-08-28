@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.OptionalDouble;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -26,6 +27,8 @@ import java.util.regex.Pattern;
 @Component
 public class TrainingPlanValidator {
     private static final Pattern NUMERO = Pattern.compile("(\\d+(?:[.,]\\d+)?)");
+    private static final Pattern DURACAO_CANONICA =
+            Pattern.compile("^\\s*(\\d+)\\s+min\\s*$", Pattern.CASE_INSENSITIVE);
     private static final Map<String, Integer> ORDEM_DIAS = criarOrdemDias();
     private static final Set<String> TIPOS_INTENSOS =
             Set.of("INTERVALADO", "TEMPO", "RITMO", "FARTLEK", "PROVA");
@@ -248,13 +251,26 @@ public class TrainingPlanValidator {
             AgentExecutionContext context,
             List<String> errors,
             List<String> warnings) {
-        if (!provaProxima(context)) {
+        PlanoTreinoCalendario.ContextoProva calendario = PlanoTreinoCalendario.contexto(
+                context.request(), context.duracaoSemanas(), context.dataInicio());
+        if (!calendario.provaDentroDoCiclo()) {
+            boolean possuiCompeticao = plano.getSemanas() != null
+                    && plano.getSemanas().stream()
+                            .filter(semana -> semana != null && semana.getTreinos() != null)
+                            .flatMap(semana -> semana.getTreinos().stream())
+                            .anyMatch(treino -> treino != null && "PROVA".equals(normalizarTipo(
+                                    treino.getTipo(), treino.getTitulo())));
+            if (possuiCompeticao) {
+                errors.add("Global: a competição não deve aparecer quando a prova está fora do ciclo.");
+            }
             return;
         }
-        warnings.add("Global: a prova está a menos de quatro semanas; "
-                + "o ciclo deve combinar preparação curta e recuperação.");
-        if (!StringUtils.hasText(plano.getAlerta())) {
-            errors.add("Global: plano para prova próxima deve conter alerta sobre o prazo insuficiente.");
+        if (provaProxima(context)) {
+            warnings.add("Global: a prova está a menos de quatro semanas; "
+                    + "o ciclo deve combinar preparação curta e recuperação.");
+            if (!StringUtils.hasText(plano.getAlerta())) {
+                warnings.add("Global: plano para prova próxima não contém alerta sobre o prazo curto.");
+            }
         }
 
         LocalDate dataProva = context.request().getDataProva();
@@ -315,6 +331,7 @@ public class TrainingPlanValidator {
                         + indice + " e " + (indice + 1) + ".");
             }
         }
+        validarProgressaoLongoes(semanas, errors);
 
         if (provaDentroDoCiclo(context) && volumes.size() >= 2) {
             double penultima = volumes.get(volumes.size() - 2);
@@ -333,17 +350,63 @@ public class TrainingPlanValidator {
         }
     }
 
-    private boolean provaDentroDoCiclo(AgentExecutionContext context) {
-        LocalDate dataProva = context.request().getDataProva();
-        if (!Boolean.TRUE.equals(context.request().getPossuiProva()) || dataProva == null) {
-            return false;
+    private void validarProgressaoLongoes(
+            List<SemanaPlanoIAResponseDTO> semanas,
+            List<String> errors) {
+        for (int indice = 1; indice < semanas.size(); indice++) {
+            OptionalInt anterior = duracaoLongaoMinutos(semanas.get(indice - 1));
+            OptionalInt atual = duracaoLongaoMinutos(semanas.get(indice));
+            if (anterior.isEmpty() || atual.isEmpty()) {
+                continue;
+            }
+
+            int minutosAnteriores = anterior.getAsInt();
+            int minutosAtuais = atual.getAsInt();
+            int aumento = minutosAtuais - minutosAnteriores;
+            double limite = Math.max(15, minutosAnteriores * 0.15);
+            if (aumento > limite) {
+                double percentual = aumento * 100.0 / minutosAnteriores;
+                int maximoPermitido = (int) Math.floor(minutosAnteriores + limite);
+                errors.add("Semana " + (indice + 1) + ": o longão aumentou de "
+                        + minutosAnteriores + " min na semana " + indice + " para "
+                        + minutosAtuais + " min. O aumento foi de " + aumento + " min ("
+                        + String.format(Locale.ROOT, "%.1f", percentual)
+                        + "%); o limite permitido a partir de " + minutosAnteriores + " min é "
+                        + String.format(Locale.ROOT, "%.1f", limite) + " min. Reduza este longão "
+                        + "para no máximo aproximadamente " + maximoPermitido
+                        + " min e mantenha distanciaKm, duracaoEstimada e descrição coerentes.");
+            }
         }
-        LocalDate primeiraSegunda = context.dataInicio()
-                .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-        LocalDate fimDoCiclo = primeiraSegunda
-                .plusWeeks(context.duracaoSemanas())
-                .minusDays(1);
-        return !dataProva.isAfter(fimDoCiclo);
+    }
+
+    private OptionalInt duracaoLongaoMinutos(SemanaPlanoIAResponseDTO semana) {
+        if (semana == null || semana.getTreinos() == null) {
+            return OptionalInt.empty();
+        }
+        for (TreinoPlanoIAResponseDTO treino : semana.getTreinos()) {
+            if (treino == null || !"LONGAO".equals(normalizarTipo(
+                    treino.getTipo(), treino.getTitulo()))) {
+                continue;
+            }
+            Matcher matcher = DURACAO_CANONICA.matcher(
+                    valor(treino.getDuracaoEstimada()));
+            if (!matcher.matches()) {
+                return OptionalInt.empty();
+            }
+            try {
+                int minutos = Integer.parseInt(matcher.group(1));
+                return minutos > 0 ? OptionalInt.of(minutos) : OptionalInt.empty();
+            } catch (NumberFormatException exception) {
+                return OptionalInt.empty();
+            }
+        }
+        return OptionalInt.empty();
+    }
+
+    private boolean provaDentroDoCiclo(AgentExecutionContext context) {
+        return PlanoTreinoCalendario.contexto(
+                context.request(), context.duracaoSemanas(), context.dataInicio())
+                .provaDentroDoCiclo();
     }
 
     private double volumeSemana(SemanaPlanoIAResponseDTO semana) {

@@ -408,7 +408,7 @@ class GerarPlanoTreinoIAServiceTest {
 
     @Test
     void provaEmCincoSemanasGeraCincoSemanas() {
-        GerarPlanoTreinoRequestDTO request = requestComProva(LocalDate.of(2026, 8, 18));
+        GerarPlanoTreinoRequestDTO request = requestComProva(LocalDate.of(2026, 8, 11));
 
         int duracao = service.calcularDuracaoSemanas(request);
 

@@ -156,6 +156,112 @@ class TrainingPlanValidatorTest {
     }
 
     @Test
+    void rejeitaAumentoDeLongaoAcimaDoMaiorEntreQuinzeMinutosEQuinzePorCento() {
+        PlanoTreinoIAResponseDTO plano = plano(4);
+        definirDuracaoLongao(plano, 0, "90 min");
+        definirDuracaoLongao(plano, 1, "120 min");
+
+        ValidationResult resultado = validar(plano, request(false, false, "10 km"), 4);
+
+        assertErro(resultado, "aumentou de 90 min na semana 1 para 120 min");
+        assertErro(resultado, "30 min (33.3%)");
+        assertErro(resultado, "no máximo aproximadamente 105 min");
+    }
+
+    @Test
+    void permiteAumentosAteOLimiteAbsolutoOuPercentual() {
+        List<int[]> casos = List.of(
+                new int[]{40, 50}, new int[]{50, 60}, new int[]{60, 75},
+                new int[]{75, 90}, new int[]{90, 100}, new int[]{90, 105},
+                new int[]{150, 165}, new int[]{150, 172});
+        for (int[] caso : casos) {
+            PlanoTreinoIAResponseDTO plano = plano(4);
+            definirDuracaoLongao(plano, 0, caso[0] + " min");
+            definirDuracaoLongao(plano, 1, caso[1] + " min");
+
+            ValidationResult resultado = validar(
+                    plano, request(false, false, "5 km"), 4);
+
+            assertTrue(resultado.isValid(), () -> caso[0] + " -> " + caso[1]
+                    + ", erros: " + resultado.getErrors());
+        }
+    }
+
+    @Test
+    void rejeitaAumentoDeLongaoAvancadoAcimaDeQuinzePorCento() {
+        PlanoTreinoIAResponseDTO plano = plano(4);
+        definirDuracaoLongao(plano, 0, "150 min");
+        definirDuracaoLongao(plano, 1, "180 min");
+
+        ValidationResult resultado = validar(plano, request(false, false, "42 km"), 4);
+
+        assertErro(resultado, "aumentou de 150 min na semana 1 para 180 min");
+        assertErro(resultado, "limite permitido a partir de 150 min é 22.5 min");
+        assertErro(resultado, "no máximo aproximadamente 172 min");
+    }
+
+    @Test
+    void permiteReducaoDeLongao() {
+        PlanoTreinoIAResponseDTO plano = plano(4);
+        definirDuracaoLongao(plano, 0, "120 min");
+        definirDuracaoLongao(plano, 1, "90 min");
+
+        ValidationResult resultado = validar(plano, request(false, false, "10 km"), 4);
+
+        assertTrue(resultado.isValid(), () -> "Erros: " + resultado.getErrors());
+    }
+
+    @Test
+    void ignoraComparacaoQuandoDuracaoDoLongaoNaoForCanonica() {
+        PlanoTreinoIAResponseDTO plano = plano(4);
+        definirDuracaoLongao(plano, 0, "90 minutos");
+        definirDuracaoLongao(plano, 1, "120 min");
+
+        ValidationResult resultado = validar(plano, request(false, false, "10 km"), 4);
+
+        assertTrue(resultado.isValid(), () -> "Erros: " + resultado.getErrors());
+    }
+
+    @Test
+    void ignoraComparacaoQuandoDuracaoDoLongaoEstiverAusente() {
+        PlanoTreinoIAResponseDTO plano = plano(4);
+        definirDuracaoLongao(plano, 0, null);
+        definirDuracaoLongao(plano, 1, "120 min");
+
+        assertTrue(validar(plano, request(false, false, "10 km"), 4).isValid());
+    }
+
+    @Test
+    void primeiraSemanaNaoTemComparacaoELongaoIgualPassa() {
+        PlanoTreinoIAResponseDTO plano = plano(4);
+        definirDuracaoLongao(plano, 0, "300 min");
+        definirDuracaoLongao(plano, 1, "300 min");
+
+        assertTrue(validar(plano, request(false, false, "10 km"), 4).isValid());
+    }
+
+    @Test
+    void semanaSemLongaoNaoCriaNovoErroParaObjetivoQueNaoOExige() {
+        PlanoTreinoIAResponseDTO plano = plano(4);
+        plano.getSemanas().get(1).getTreinos().get(2).setTipo("Leve");
+        plano.getSemanas().get(1).getTreinos().get(2).setTitulo("Leve");
+        definirDuracaoLongao(plano, 0, "40 min");
+        definirDuracaoLongao(plano, 2, "120 min");
+
+        assertTrue(validar(plano, request(false, false, "5 km"), 4).isValid());
+    }
+
+    @Test
+    void regraPermaneceCompativelComMeiaEMaratona() {
+        for (String objetivo : List.of("Primeira Meia Maratona 21 km", "Maratona 42 km")) {
+            PlanoTreinoIAResponseDTO plano = plano(4);
+            definirDuracaoLongao(plano, 0, "90 min");
+            definirDuracaoLongao(plano, 1, "105 min");
+            assertTrue(validar(plano, request(false, false, objetivo), 4).isValid());
+        }
+    }
+
+    @Test
     void rejeitaSemanasForaDeOrdem() {
         PlanoTreinoIAResponseDTO plano = plano(4);
         plano.getSemanas().get(1).setNumeroSemana(3);
@@ -176,8 +282,6 @@ class TrainingPlanValidatorTest {
         GerarPlanoTreinoRequestDTO request = request(true, false, "10 km");
         request.setDataProva(LocalDate.of(2026, 1, 18));
         PlanoTreinoIAResponseDTO plano = plano(4);
-        plano.setAlerta("Prazo insuficiente para um ciclo completo; "
-                + "o período posterior será usado para recuperação e continuidade.");
         TreinoPlanoIAResponseDTO prova =
                 plano.getSemanas().get(1).getTreinos().get(2);
         prova.setTipo("Prova");
@@ -191,6 +295,53 @@ class TrainingPlanValidatorTest {
 
         assertTrue(resultado.isValid(), () -> "Erros: " + resultado.getErrors());
         assertAviso(resultado, "menos de quatro semanas");
+        assertAviso(resultado, "não contém alerta");
+    }
+
+    @Test
+    void provaEmDiaNaoSelecionadoSubstituiExatamenteUmTreino() {
+        GerarPlanoTreinoRequestDTO request = request(true, false, "10 km");
+        request.setDataProva(LocalDate.of(2026, 1, 17));
+        PlanoTreinoIAResponseDTO plano = plano(4);
+        SemanaPlanoIAResponseDTO semanaProva = plano.getSemanas().get(1);
+        TreinoPlanoIAResponseDTO substituido = semanaProva.getTreinos().get(2);
+        substituido.setTipo("Descanso");
+        substituido.setTitulo("Descanso");
+        substituido.setDistanciaKm("0 km");
+        TreinoPlanoIAResponseDTO prova = treino("sábado", "Prova", "10 km");
+        prova.setTitulo("Prova");
+        semanaProva.getTreinos().add(prova);
+        plano.getSemanas().get(2).getTreinos().forEach(treino -> {
+            treino.setTipo("Regenerativo");
+            treino.setTitulo("Regenerativo");
+        });
+
+        ValidationResult resultado = validar(plano, request, 4);
+
+        assertTrue(resultado.isValid(), () -> "Erros: " + resultado.getErrors());
+    }
+
+    @Test
+    void provaForaDoCicloNaoExigeCompeticaoNemTaperFinal() {
+        GerarPlanoTreinoRequestDTO request = request(true, false, "10 km");
+        request.setDataProva(LocalDate.of(2026, 3, 1));
+
+        ValidationResult resultado = validar(plano(4), request, 4);
+
+        assertTrue(resultado.isValid(), () -> "Erros: " + resultado.getErrors());
+        assertFalse(resultado.getWarnings().stream()
+                .anyMatch(aviso -> aviso.contains("redução de carga")));
+    }
+
+    @Test
+    void provaForaDoCicloRejeitaCompeticaoInventada() {
+        GerarPlanoTreinoRequestDTO request = request(true, false, "10 km");
+        request.setDataProva(LocalDate.of(2026, 3, 1));
+        PlanoTreinoIAResponseDTO plano = plano(4);
+        plano.getSemanas().get(3).getTreinos().get(2).setTipo("Prova");
+        plano.getSemanas().get(3).getTreinos().get(2).setTitulo("Prova");
+
+        assertErro(validar(plano, request, 4), "não deve aparecer");
     }
 
     private ValidationResult validar(
@@ -254,6 +405,15 @@ class TrainingPlanValidatorTest {
         treino.setPaceSugerido("6:00 min/km");
         treino.setObservacoes("Controle o esforço.");
         return treino;
+    }
+
+    private void definirDuracaoLongao(
+            PlanoTreinoIAResponseDTO plano, int indiceSemana, String duracao) {
+        plano.getSemanas().get(indiceSemana).getTreinos().stream()
+                .filter(treino -> "Longão".equals(treino.getTipo()))
+                .findFirst()
+                .orElseThrow()
+                .setDuracaoEstimada(duracao);
     }
 
     private void assertErro(ValidationResult resultado, String trecho) {

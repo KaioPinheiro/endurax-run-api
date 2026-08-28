@@ -25,6 +25,9 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
+import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -99,10 +102,7 @@ class PagamentoServiceTest {
 
     @Test
     void criaPixVinculadoASolicitacaoPersistida() {
-        SolicitacaoPlano solicitacao = new SolicitacaoPlano();
-        solicitacao.setId(7L);
-        solicitacao.setEmail("cliente@email.com");
-        solicitacao.setStatus(SolicitacaoPlanoStatus.PENDING);
+        SolicitacaoPlano solicitacao = solicitacaoValida(false, null);
         when(solicitacaoPlanoRepository.findById(7L)).thenReturn(Optional.of(solicitacao));
         when(client.criarOrderPix(eq("cliente@email.com"), any(), any(),
                 eq(new BigDecimal("12.90")))).thenReturn(orderPendente("QR-CODE", "BASE64"));
@@ -119,6 +119,37 @@ class PagamentoServiceTest {
         assertEquals(7L, captor.getValue().getSolicitacaoPlano().getId());
         assertEquals(SolicitacaoPlanoStatus.PAYMENT_PENDING, solicitacao.getStatus());
         verify(solicitacaoPlanoRepository).save(solicitacao);
+    }
+
+    @Test
+    void bloqueiaPixQuandoSolicitacaoEnvelheceu() {
+        SolicitacaoPlano solicitacao = solicitacaoValida(true, LocalDate.of(2026, 8, 2));
+        when(solicitacaoPlanoRepository.findById(7L)).thenReturn(Optional.of(solicitacao));
+
+        PagamentoException exception = assertThrows(
+                PagamentoException.class,
+                () -> service.criarPix("cliente@email.com", 7L));
+
+        assertTrue(exception.getMessage().contains("14 dias"));
+        verify(client, never()).criarOrderPix(any(), any(), any(), any());
+    }
+
+    @Test
+    void bloqueiaPixQuandoDistanciaDaProvaPersistidaDivergeDaMeta() throws Exception {
+        SolicitacaoPlano solicitacao = solicitacaoValida(true, LocalDate.of(2026, 8, 10));
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        GerarPlanoTreinoRequestDTO formulario = mapper.readValue(
+                solicitacao.getDadosFormularioJson(), GerarPlanoTreinoRequestDTO.class);
+        formulario.setDistanciaProva("5 km");
+        solicitacao.setDadosFormularioJson(mapper.writeValueAsString(formulario));
+        when(solicitacaoPlanoRepository.findById(7L)).thenReturn(Optional.of(solicitacao));
+
+        PagamentoException exception = assertThrows(
+                PagamentoException.class,
+                () -> service.criarPix("cliente@email.com", 7L));
+
+        assertTrue(exception.getMessage().contains("distância da prova"));
+        verify(client, never()).criarOrderPix(any(), any(), any(), any());
     }
 
     @Test
@@ -172,6 +203,30 @@ class PagamentoServiceTest {
         assertFalse(response.expirado());
         assertEquals("accredited", response.statusDetail());
         assertTrue(pagamento.getPagoEm() != null);
+    }
+
+    private SolicitacaoPlano solicitacaoValida(boolean possuiProva, LocalDate dataProva) {
+        try {
+            GerarPlanoTreinoRequestDTO formulario = new GerarPlanoTreinoRequestDTO();
+            formulario.setObjetivo("Melhorar tempo nos 10 km");
+            formulario.setDistanciaAlvo("10 km");
+            formulario.setPossuiProva(possuiProva);
+            formulario.setDataProva(dataProva);
+            formulario.setDistanciaProva(possuiProva ? "10 km" : null);
+            formulario.setDiasDisponiveis(List.of("terça-feira", "quinta-feira", "sábado"));
+            formulario.setIdade(30);
+            formulario.setExperienciaCorrida("1 a 3 anos");
+            formulario.setVolumeSemanalAtual("20-40 km");
+            SolicitacaoPlano solicitacao = new SolicitacaoPlano();
+            solicitacao.setId(7L);
+            solicitacao.setEmail("cliente@email.com");
+            solicitacao.setStatus(SolicitacaoPlanoStatus.PENDING);
+            solicitacao.setDadosFormularioJson(
+                    new ObjectMapper().findAndRegisterModules().writeValueAsString(formulario));
+            return solicitacao;
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
     @Test

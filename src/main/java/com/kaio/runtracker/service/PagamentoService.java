@@ -1,5 +1,7 @@
 package com.kaio.runtracker.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kaio.runtracker.client.MercadoPagoOrderResponse;
 import com.kaio.runtracker.client.MercadoPagoOrdersClient;
 import com.kaio.runtracker.config.MercadoPagoProperties;
@@ -38,6 +40,8 @@ public class PagamentoService {
     private final MercadoPagoProperties properties;
     private final SolicitacaoPlanoRepository solicitacaoPlanoRepository;
     private final Clock clock;
+    private final ObjectMapper objectMapper;
+    private final PlanoTreinoRegrasDeterministicasValidator regrasValidator;
 
     @Autowired
     public PagamentoService(
@@ -59,6 +63,8 @@ public class PagamentoService {
         this.properties = properties;
         this.solicitacaoPlanoRepository = solicitacaoPlanoRepository;
         this.clock = clock;
+        this.objectMapper = new ObjectMapper().findAndRegisterModules();
+        this.regrasValidator = new PlanoTreinoRegrasDeterministicasValidator(clock);
     }
 
     public CriarPagamentoPixResponseDTO criarPix(String email) {
@@ -77,6 +83,7 @@ public class PagamentoService {
             }
         }
         SolicitacaoPlano solicitacao = buscarSolicitacao(solicitacaoPlanoId, emailNormalizado);
+        validarSolicitacaoAntesDoPix(solicitacao);
         String externalReference = UUID.randomUUID().toString();
         String idempotencyKey = UUID.randomUUID().toString();
         OffsetDateTime expiracaoRequest = OffsetDateTime.now(clock)
@@ -288,6 +295,21 @@ public class PagamentoService {
                     "A solicitação do plano já está vinculada a um pagamento.");
         }
         return solicitacao;
+    }
+
+    private void validarSolicitacaoAntesDoPix(SolicitacaoPlano solicitacao) {
+        if (solicitacao == null) return;
+        try {
+            var formulario = objectMapper.readValue(
+                    solicitacao.getDadosFormularioJson(),
+                    com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO.class);
+            regrasValidator.validarSolicitacaoPersistidaAntesDoPix(formulario);
+        } catch (IllegalArgumentException exception) {
+            throw new PagamentoException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        } catch (JsonProcessingException exception) {
+            throw new PagamentoException(HttpStatus.BAD_REQUEST,
+                    "Os dados da solicitação do plano são inválidos.", exception);
+        }
     }
 
     private void validarOrderCriada(MercadoPagoOrderResponse order) {
