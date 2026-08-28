@@ -2,6 +2,8 @@ package com.kaio.runtracker.dto;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.kaio.runtracker.ai.CapacidadeCincoKm;
+import com.kaio.runtracker.validation.TempoCincoKm;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -104,6 +106,13 @@ public class GerarPlanoTreinoRequestDTO {
         Long atual = tempoEmSegundos(tempoAtual);
         Long desejado = tempoEmSegundos(tempoDesejado);
         return atual != null && desejado != null && desejado < atual;
+    }
+
+    @AssertTrue(message = "Informe um tempo válido para os 5 km no formato MM:SS ou HH:MM:SS, de no máximo 2:00:00")
+    public boolean isTempo5KmValido() {
+        return !CapacidadeCincoKm.ehAplicavel(this)
+                || !Boolean.TRUE.equals(corre5KmSemCaminhar)
+                || TempoCincoKm.ehValido(tempo5Km);
     }
 
     public boolean ehObjetivoPerformance() {
