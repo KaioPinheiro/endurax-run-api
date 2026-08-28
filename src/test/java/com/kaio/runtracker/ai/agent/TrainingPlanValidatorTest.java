@@ -106,7 +106,8 @@ class TrainingPlanValidatorTest {
 
     @Test
     void rejeitaTreinoIntensoParaQuemAindaNaoCorreCincoKmDireto() {
-        GerarPlanoTreinoRequestDTO request = request(false, false, "5 km");
+        GerarPlanoTreinoRequestDTO request = request(false, false, "Primeiros 5 km");
+        request.setExperienciaCorrida("Menos de 6 meses");
         request.setCorre5KmSemCaminhar(false);
 
         ValidationResult resultado = validar(plano(4), request, 4);
@@ -117,7 +118,8 @@ class TrainingPlanValidatorTest {
 
     @Test
     void aprovaCorridaECaminhadaParaQuemAindaNaoCorreCincoKmDireto() {
-        GerarPlanoTreinoRequestDTO request = request(false, false, "5 km");
+        GerarPlanoTreinoRequestDTO request = request(false, false, "Primeiros 5 km");
+        request.setExperienciaCorrida("Menos de 6 meses");
         request.setCorre5KmSemCaminhar(false);
         PlanoTreinoIAResponseDTO plano = plano(4);
         plano.getSemanas().forEach(semana ->
@@ -133,6 +135,47 @@ class TrainingPlanValidatorTest {
         ValidationResult resultado = validar(plano, request, 4);
 
         assertTrue(resultado.isValid(), () -> "Erros: " + resultado.getErrors());
+    }
+
+    @Test
+    void naoExigeCaminhadaEmFortalecimentoOuMobilidade() {
+        for (String tipo : List.of("Fortalecimento", "Mobilidade")) {
+            GerarPlanoTreinoRequestDTO request = request(
+                    false, false, "Primeiros 5 km");
+            request.setExperienciaCorrida("Menos de 6 meses");
+            request.setCorre5KmSemCaminhar(false);
+            PlanoTreinoIAResponseDTO plano = planoComCorridaECaminhada();
+            plano.getSemanas().forEach(semana -> {
+                TreinoPlanoIAResponseDTO treino = semana.getTreinos().get(1);
+                treino.setTipo(tipo);
+                treino.setTitulo(tipo);
+                treino.setDescricao("Exercícios gerais de " + tipo.toLowerCase());
+            });
+
+            ValidationResult resultado = validar(plano, request, 4);
+
+            assertFalse(resultado.getErrors().stream().anyMatch(erro ->
+                    erro.contains("quinta-feira deve alternar")),
+                    () -> tipo + ": " + resultado.getErrors());
+        }
+    }
+
+    @Test
+    void ignoraRespostaFalsaForaDoEscopoDeExperienciaOuObjetivo() {
+        GerarPlanoTreinoRequestDTO experiente = request(false, false, "Emagrecer");
+        experiente.setExperienciaCorrida("Mais de 3 anos");
+        experiente.setCorre5KmSemCaminhar(false);
+        GerarPlanoTreinoRequestDTO objetivoFora = request(
+                false, false, "Primeiros 10 km");
+        objetivoFora.setExperienciaCorrida("Menos de 6 meses");
+        objetivoFora.setCorre5KmSemCaminhar(false);
+
+        for (GerarPlanoTreinoRequestDTO request : List.of(experiente, objetivoFora)) {
+            ValidationResult resultado = validar(plano(4), request, 4);
+            assertFalse(resultado.getErrors().stream().anyMatch(erro ->
+                    erro.contains("5 km direto") || erro.contains("deve alternar")),
+                    () -> resultado.getErrors().toString());
+        }
     }
 
     @Test
@@ -391,6 +434,17 @@ class TrainingPlanValidatorTest {
             semanas.add(semana);
         }
         plano.setSemanas(semanas);
+        return plano;
+    }
+
+    private PlanoTreinoIAResponseDTO planoComCorridaECaminhada() {
+        PlanoTreinoIAResponseDTO plano = plano(4);
+        plano.getSemanas().forEach(semana ->
+                semana.getTreinos().forEach(treino -> {
+                    treino.setTipo("Leve");
+                    treino.setTitulo("Corrida e caminhada");
+                    treino.setDescricao("Principal: trote leve com caminhada");
+                }));
         return plano;
     }
 

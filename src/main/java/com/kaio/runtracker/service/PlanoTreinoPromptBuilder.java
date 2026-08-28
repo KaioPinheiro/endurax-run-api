@@ -1,6 +1,7 @@
 package com.kaio.runtracker.service;
 
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
+import com.kaio.runtracker.ai.CapacidadeCincoKm;
 import com.kaio.runtracker.ai.prompt.PromptObjetivoFactory;
 import com.kaio.runtracker.ai.prompt.PaceAlvoCalculator;
 import com.kaio.runtracker.ai.agent.PlanoTreinoCalendario;
@@ -63,9 +64,7 @@ public class PlanoTreinoPromptBuilder {
                 - Quando a prova estiver dentro das quatro semanas do plano, use o período posterior somente para recuperação e retorno progressivo, sem tratá-lo como preparação para uma prova futura.
                 - Nao invente informacoes ausentes.
                 - Ajuste intensidade, volume e complexidade ao perfil, objetivo, ritmo, idade, lesoes e observacoes.
-                - Defina internamente o nivel real do corredor principalmente pela resposta sobre correr 5 km sem caminhar e, quando a resposta for positiva, pelo tempo atual nos 5 km.
-                - Quem ainda nao corre 5 km direto deve ser tratado como iniciante. Para quem corre, use o tempo dos 5 km para estimar de forma prudente se o nivel e iniciante, intermediario ou avancado e calibrar volume, pace, intensidade e complexidade.
-                - A experiencia declarada e apenas contexto complementar e nao deve se sobrepor a capacidade demonstrada nos 5 km.
+                %s
                 - Retorne apenas JSON valido, sem markdown. 
 
                 Criterios de um plano factivel:
@@ -98,8 +97,6 @@ public class PlanoTreinoPromptBuilder {
                 - Se o atleta nunca correu, comece com sessoes alternando caminhada e blocos curtos de trote ou corrida leve, sempre em intensidade confortavel e controlada.
                 - Progrida primeiro o tempo dos blocos de trote, depois reduza gradualmente as pausas caminhando e, somente quando houver adaptacao segura, introduza trechos curtos de corrida continua devagar.
                 - Trechos um pouco mais rapidos so podem aparecer de forma curta, controlada e progressiva depois de demonstrada adaptacao, se idade, lesoes, observacoes e recuperacao permitirem; nunca use esforco maximo nem priorize velocidade sobre seguranca.
-                - Para quem ainda nao corre 5 km direto, prescreva principalmente por tempo e percepcao de esforco, sem tiros, intervalados intensos, treino de ritmo forte ou pace obrigatorio.
-                - Para quem ainda nao corre 5 km direto, use tipo "Leve" nas sessoes comuns e "Longao" somente quando ele for exigido pelo objetivo; use titulo claro como "Corrida e caminhada" enquanto houver alternancia e detalhe no bloco Principal os minutos de trote, corrida e caminhada e a quantidade de repeticoes.
                 - Ao definir qualquer progressao para iniciantes, avalie explicitamente idade e presenca de lesao. Em caso de risco, dor ou duvida, reduza impacto, intensidade e duracao e priorize caminhada, trote leve e recuperacao.
                 - Quando a Experiencia for "Nunca corri", todas as sessoes devem usar caminhada no Aquecimento e caminhada no Desaquecimento; nunca use trote ou corrida nesses dois blocos.
                 - Quando a Experiencia for "Nunca corri", o Principal deve ser dividido em passos distintos e executaveis de trote leve e caminhada, informando a duracao de cada passo e a quantidade de repeticoes.
@@ -107,7 +104,6 @@ public class PlanoTreinoPromptBuilder {
                 - Aumente gradualmente os minutos de trote leve ao longo das semanas e reduza a caminhada somente quando isso for seguro. Nao repita a mesma proporcao de trote e caminhada em todas as semanas.
                 - Use idade, lesao e observacoes para decidir a progressao: atletas mais velhos, lesionados, com dor ou com fatores de risco devem ter blocos de trote menores, mais caminhada e progressao mais lenta.
                 - Somente para atleta sem lesao relevante, sem relato de dor e com idade e adaptacao compativeis, as semanas finais podem conter blocos mais longos de trote ou corrida leve continua; mantenha intensidade confortavel e inclua pausas caminhando quando necessario.
-                - Se o atleta corre 5 km direto, use o tempo informado somente como referencia da capacidade atual, sem transformar esse resultado em promessa de desempenho.
 
                 Antes de responder, faca uma conferencia final silenciosa de carga:
                 - Em cada semana, some distanciaKm de todas as sessoes de corrida e compare o total
@@ -204,6 +200,7 @@ public class PlanoTreinoPromptBuilder {
                 duracaoSemanas,
                 orientacaoLongaoObrigatorio(request),
                 promptObjetivoFactory.criarPrompt(request).strip(),
+                orientacaoCapacidadeCincoKm(request),
                 orientacaoCiclo(request, duracaoSemanas, dataInicio),
                 duracaoSemanas,
                 request.getObjetivo(),
@@ -211,8 +208,9 @@ public class PlanoTreinoPromptBuilder {
                 valor(request.getTempoAtual()),
                 request.ehObjetivoPerformance() ? valor(request.getTempoDesejado()) : "Nao se aplica",
                 PaceAlvoCalculator.calcular(request).orElse("Nao se aplica"),
-                respostaSimNao(request.getCorre5KmSemCaminhar()),
-                valor(request.getTempo5Km()),
+                respostaSimNao(CapacidadeCincoKm.respostaAplicavel(request)),
+                CapacidadeCincoKm.ehAplicavel(request)
+                        ? valor(request.getTempo5Km()) : "Nao informado",
                 valor(request.getMaiorDistanciaCorrida()),
                 request.getExperienciaCorrida(),
                 request.getVolumeSemanalAtual(),
@@ -339,5 +337,19 @@ public class PlanoTreinoPromptBuilder {
             return "Nao informado";
         }
         return valor ? "Sim" : "Nao";
+    }
+
+    private String orientacaoCapacidadeCincoKm(GerarPlanoTreinoRequestDTO request) {
+        if (!CapacidadeCincoKm.ehAplicavel(request)) {
+            return "- A resposta sobre correr 5 km sem caminhar nao se aplica a este perfil e objetivo; ignore qualquer valor legado desse campo e infira o nivel pelo conjunto dos demais dados.";
+        }
+        return """
+                - Defina internamente o nivel real do corredor principalmente pela resposta sobre correr 5 km sem caminhar e, quando a resposta for positiva, pelo tempo atual nos 5 km.
+                - Quem ainda nao corre 5 km direto deve ser tratado como iniciante. Para quem corre, use o tempo dos 5 km para estimar de forma prudente se o nivel e iniciante, intermediario ou avancado e calibrar volume, pace, intensidade e complexidade.
+                - A experiencia declarada e contexto complementar e nao deve se sobrepor a capacidade demonstrada nos 5 km.
+                - Para quem ainda nao corre 5 km direto, prescreva principalmente por tempo e percepcao de esforco, sem tiros, intervalados intensos, treino de ritmo forte ou pace obrigatorio.
+                - Para quem ainda nao corre 5 km direto, use tipo "Leve" nas sessoes comuns e "Longao" somente quando ele for exigido pelo objetivo; use titulo claro como "Corrida e caminhada" enquanto houver alternancia e detalhe no bloco Principal os minutos de trote, corrida e caminhada e a quantidade de repeticoes.
+                - Se o atleta corre 5 km direto, use o tempo informado somente como referencia da capacidade atual, sem transformar esse resultado em promessa de desempenho.
+                """.strip();
     }
 }

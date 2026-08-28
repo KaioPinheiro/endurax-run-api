@@ -98,7 +98,7 @@ class PlanoTreinoPromptBuilderTest {
     }
 
     @Test
-    void inicianteSemCincoKmRecebeOrientacaoDeCorridaECaminhada() {
+    void nuncaCorreuUsaRegrasPropriasSemAtivarBooleanoDeCincoKm() {
         GerarPlanoTreinoRequestDTO request = new GerarPlanoTreinoRequestDTO();
         request.setObjetivo("Primeiros 5 km");
         request.setCorre5KmSemCaminhar(false);
@@ -113,10 +113,10 @@ class PlanoTreinoPromptBuilderTest {
 
         String prompt = promptBuilder.criarPrompt(request, 4);
 
-        assertTrue(prompt.contains("Corre 5 km direto sem caminhar: Nao"));
-        assertTrue(prompt.contains("Defina internamente o nivel real do corredor"));
+        assertTrue(prompt.contains("Corre 5 km direto sem caminhar: Nao informado"));
+        assertTrue(prompt.contains("nao se aplica a este perfil e objetivo"));
+        assertFalse(prompt.contains("Defina internamente o nivel real do corredor principalmente"));
         assertTrue(prompt.contains("alternando caminhada e blocos curtos de trote ou corrida leve"));
-        assertTrue(prompt.contains("sem tiros, intervalados intensos"));
         assertTrue(prompt.contains("Trechos um pouco mais rapidos so podem aparecer"));
         assertTrue(prompt.contains("avalie explicitamente idade e presenca de lesao"));
         assertTrue(prompt.contains("todas as sessoes devem usar caminhada no Aquecimento"));
@@ -151,9 +151,10 @@ class PlanoTreinoPromptBuilderTest {
 
         String prompt = promptBuilder.criarPrompt(request, 4);
 
-        assertTrue(prompt.contains("Tempo atual nos 5 km: 29 minutos"));
+        assertTrue(prompt.contains("Corre 5 km direto sem caminhar: Nao informado"));
+        assertTrue(prompt.contains("Tempo atual nos 5 km: Nao informado"));
         assertTrue(prompt.contains("Maior distancia ja percorrida: 14 km"));
-        assertTrue(prompt.contains("use o tempo dos 5 km para estimar de forma prudente"));
+        assertFalse(prompt.contains("use o tempo dos 5 km para estimar de forma prudente"));
         assertTrue(prompt.contains("TODA semana deve conter exatamente um treino"));
         assertTrue(prompt.contains("tipo=\"Longão\""));
         assertTrue(prompt.contains("Dia do longao informado"));
@@ -213,6 +214,24 @@ class PlanoTreinoPromptBuilderTest {
         assertTrue(prompt.contains("maior sessao individual"));
         assertTrue(prompt.contains("experiencia, objetivo, distancia-alvo, recuperacao e duracao do ciclo"));
         assertTrue(prompt.contains("Corre 5 km direto sem caminhar: Sim"));
+        assertTrue(prompt.contains("Defina internamente o nivel real do corredor"));
+    }
+
+    @Test
+    void respostaFalsaForaDoEscopoNaoAtivaRegrasDeIniciante() {
+        GerarPlanoTreinoRequestDTO request = new GerarPlanoTreinoRequestDTO();
+        request.setObjetivo("Emagrecer");
+        request.setExperienciaCorrida("Mais de 3 anos");
+        request.setCorre5KmSemCaminhar(false);
+        request.setTempo5Km("22:00");
+        request.setDistanciaAlvo("5 km");
+        request.setDiasDisponiveis(List.of("terÃ§a-feira"));
+
+        String prompt = promptBuilder.criarPrompt(request, 4);
+
+        assertTrue(prompt.contains("Corre 5 km direto sem caminhar: Nao informado"));
+        assertTrue(prompt.contains("Tempo atual nos 5 km: Nao informado"));
+        assertFalse(prompt.contains("sem tiros, intervalados intensos"));
     }
 
     @Test

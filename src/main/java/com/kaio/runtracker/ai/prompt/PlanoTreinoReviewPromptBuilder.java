@@ -3,6 +3,7 @@ package com.kaio.runtracker.ai.prompt;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kaio.runtracker.ai.agent.AgentExecutionContext;
+import com.kaio.runtracker.ai.CapacidadeCincoKm;
 import com.kaio.runtracker.ai.agent.PlanoTreinoCalendario;
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
 import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
@@ -82,9 +83,7 @@ public class PlanoTreinoReviewPromptBuilder {
                 coerência do período posterior ao evento. Mesmo com prova próxima, não reprove
                 apenas pela proximidade; avalie se preparação curta, alerta, recuperação e
                 retorno progressivo são coerentes com o contexto real.
-                Se o atleta ainda não corre 5 km direto sem caminhar, confirme que
-                todas as sessões alternam trote ou corrida leve com caminhada e que
-                não existem tiros, ritmo forte ou outro treino intenso.
+                %s
 
                 Contexto do atleta e do ciclo:
                 duracaoSemanas=%d
@@ -111,6 +110,7 @@ public class PlanoTreinoReviewPromptBuilder {
                 Plano:
                 %s
                 """.formatted(
+                orientacaoCapacidadeCincoKm(request),
                 context.duracaoSemanas(),
                 valor(request.getObjetivo()),
                 valor(request.getExperienciaCorrida()),
@@ -118,9 +118,10 @@ public class PlanoTreinoReviewPromptBuilder {
                 valor(request.getDiaLongao()),
                 valor(request.getVolumeSemanalAtual()),
                 valor(request.getMaiorDistanciaCorrida()),
-                respostaSimNao(request.getCorre5KmSemCaminhar()),
+                respostaSimNao(CapacidadeCincoKm.respostaAplicavel(request)),
                 valor(request.getTempoAtual()),
-                valor(request.getTempo5Km()),
+                CapacidadeCincoKm.ehAplicavel(request)
+                        ? valor(request.getTempo5Km()) : "Não informado",
                 valor(request.getTempoDesejado()),
                 paceAlvo(request),
                 valor(request.getRitmoConfortavel()),
@@ -150,6 +151,18 @@ public class PlanoTreinoReviewPromptBuilder {
             return "Não informado";
         }
         return valor ? "Sim" : "Não";
+    }
+
+    private String orientacaoCapacidadeCincoKm(GerarPlanoTreinoRequestDTO request) {
+        if (!CapacidadeCincoKm.ehAplicavel(request)
+                || !Boolean.FALSE.equals(request.getCorre5KmSemCaminhar())) {
+            return "";
+        }
+        return """
+                Se o atleta ainda não corre 5 km direto sem caminhar, confirme que
+                todas as sessões de corrida alternam trote ou corrida leve com caminhada e que
+                não existem tiros, ritmo forte ou outro treino intenso.
+                """.strip();
     }
 
     private String contextoTemporal(AgentExecutionContext context) {

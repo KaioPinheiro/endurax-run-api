@@ -1,5 +1,6 @@
 package com.kaio.runtracker.ai.agent;
 
+import com.kaio.runtracker.ai.CapacidadeCincoKm;
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
 import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
 import com.kaio.runtracker.dto.SemanaPlanoIAResponseDTO;
@@ -34,6 +35,9 @@ public class TrainingPlanValidator {
             Set.of("INTERVALADO", "TEMPO", "RITMO", "FARTLEK", "PROVA");
     private static final Set<String> TIPOS_LEVES =
             Set.of("LEVE", "REGENERATIVO");
+    private static final Set<String> TIPOS_CORRIDA = Set.of(
+            "LEVE", "REGENERATIVO", "INTERVALADO", "LONGAO",
+            "FARTLEK", "TEMPO", "RITMO");
 
     public ValidationResult validate(
             PlanoTreinoIAResponseDTO plano,
@@ -134,6 +138,7 @@ public class TrainingPlanValidator {
             String tipo = normalizarTipo(treino.getTipo(), treino.getTitulo());
             boolean descanso = "DESCANSO".equals(tipo);
             boolean prova = "PROVA".equals(tipo);
+            boolean treinoCorrida = ehTreinoCorrida(tipo);
             String identificador = StringUtils.hasText(treino.getDiaSemana())
                     ? treino.getDiaSemana() : "dia não informado";
 
@@ -173,8 +178,9 @@ public class TrainingPlanValidator {
                 errors.add(prefixo + identificador
                         + " possui treino intenso incompatível com lesão ativa.");
             }
-            if (Boolean.FALSE.equals(context.request().getCorre5KmSemCaminhar())
-                    && !descanso
+            if (CapacidadeCincoKm.ehAplicavel(context.request())
+                    && Boolean.FALSE.equals(context.request().getCorre5KmSemCaminhar())
+                    && treinoCorrida
                     && !prova) {
                 String descricao = normalizar(treino.getDescricao());
                 if (TIPOS_INTENSOS.contains(tipo)) {
@@ -469,6 +475,16 @@ public class TrainingPlanValidator {
         if (texto.contains("ritmo")) return "RITMO";
         if (texto.contains("leve") || texto.contains("rodagem")) return "LEVE";
         return texto.toUpperCase(Locale.ROOT);
+    }
+
+    private boolean ehTreinoCorrida(String tipoNormalizado) {
+        return TIPOS_CORRIDA.contains(tipoNormalizado)
+                || tipoNormalizado.contains("CORRIDA")
+                || tipoNormalizado.contains("TROTE")
+                || tipoNormalizado.contains("RODAGEM")
+                || tipoNormalizado.contains("VELOCIDADE")
+                || tipoNormalizado.contains("RESISTENCIA")
+                || tipoNormalizado.contains("TIRO");
     }
 
     private Set<String> normalizarDias(List<String> dias) {

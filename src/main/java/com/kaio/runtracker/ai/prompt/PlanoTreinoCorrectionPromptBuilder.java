@@ -1,6 +1,7 @@
 package com.kaio.runtracker.ai.prompt;
 
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
+import com.kaio.runtracker.ai.CapacidadeCincoKm;
 import com.kaio.runtracker.service.PlanoTreinoPromptBuilder;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -82,7 +83,7 @@ public class PlanoTreinoCorrectionPromptBuilder {
                 - Se um apontamento mencionar volume, longão, carga, experiência ou maior distância,
                   identifique as sessões responsáveis e faça a menor alteração necessária.
                 - Após uma prova próxima, programe somente recuperação e retorno progressivo; não use treinos preparatórios como se a prova ainda não tivesse ocorrido.
-                - Se o atleta não corre 5 km direto, mantenha corrida/caminhada conservadora em todas as sessões, sem treinos intensos.
+                %s
                 - Não invente dados e não altere o contrato JSON.
 
                 Antes de responder, faça uma conferência final silenciosa:
@@ -123,9 +124,11 @@ public class PlanoTreinoCorrectionPromptBuilder {
                 duracaoSemanas,
                 request.getDiasDisponiveis(),
                 orientacaoLongaoCorrecao(request),
+                orientacaoCapacidadeCincoKm(request),
                 valor(request.getObjetivo()),
-                respostaSimNao(request.getCorre5KmSemCaminhar()),
-                valor(request.getTempo5Km()),
+                respostaSimNao(CapacidadeCincoKm.respostaAplicavel(request)),
+                CapacidadeCincoKm.ehAplicavel(request)
+                        ? valor(request.getTempo5Km()) : "Nao informado",
                 valor(request.getMaiorDistanciaCorrida()),
                 valor(request.getExperienciaCorrida()),
                 valor(request.getVolumeSemanalAtual()),
@@ -163,5 +166,13 @@ public class PlanoTreinoCorrectionPromptBuilder {
             return "Nao informado";
         }
         return valor ? "Sim" : "Nao";
+    }
+
+    private String orientacaoCapacidadeCincoKm(GerarPlanoTreinoRequestDTO request) {
+        if (!CapacidadeCincoKm.ehAplicavel(request)
+                || !Boolean.FALSE.equals(request.getCorre5KmSemCaminhar())) {
+            return "";
+        }
+        return "- Se o atleta não corre 5 km direto, mantenha corrida/caminhada conservadora em todas as sessões de corrida, sem treinos intensos.";
     }
 }

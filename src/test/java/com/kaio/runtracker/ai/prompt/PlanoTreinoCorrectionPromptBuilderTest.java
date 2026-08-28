@@ -181,6 +181,27 @@ class PlanoTreinoCorrectionPromptBuilderTest {
                 "mantenha coerentes distanciaKm, duracaoEstimada");
     }
 
+    @Test
+    void correcaoAplicaRunWalkSomenteParaRespostaFalsaAplicavel() {
+        GerarPlanoTreinoRequestDTO aplicavel = requestBase("Primeiros 5 km", "5 km");
+        aplicavel.setExperienciaCorrida("Menos de 6 meses");
+        aplicavel.setCorre5KmSemCaminhar(false);
+        String promptAplicavel = builder().criarPrompt(aplicavel, 4, "{}",
+                List.of(), List.of(), List.of(), List.of());
+        assertThat(promptAplicavel).contains(
+                "corre5KmDireto=Nao",
+                "corrida/caminhada conservadora");
+
+        GerarPlanoTreinoRequestDTO foraDoEscopo = requestBase("Emagrecer", "5 km");
+        foraDoEscopo.setExperienciaCorrida("Mais de 3 anos");
+        foraDoEscopo.setCorre5KmSemCaminhar(false);
+        String promptForaDoEscopo = builder().criarPrompt(foraDoEscopo, 4, "{}",
+                List.of(), List.of(), List.of(), List.of());
+        assertThat(promptForaDoEscopo)
+                .contains("corre5KmDireto=Nao informado")
+                .doesNotContain("corrida/caminhada conservadora");
+    }
+
     private PlanoTreinoCorrectionPromptBuilder builder() {
         return new PlanoTreinoCorrectionPromptBuilder(
                 new PlanoTreinoPromptBuilder(new PromptObjetivoFactory()));

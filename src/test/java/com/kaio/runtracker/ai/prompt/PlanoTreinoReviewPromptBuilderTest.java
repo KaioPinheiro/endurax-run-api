@@ -104,9 +104,9 @@ class PlanoTreinoReviewPromptBuilderTest {
                 "diaLongao=domingo",
                 "volumeSemanalAtual=40-60 km",
                 "maiorDistanciaRealizada=42 km",
-                "corre5KmDireto=Sim",
+                "corre5KmDireto=",
                 "tempoAtual=3:20:00",
-                "tempoAtual5Km=21:00",
+                "tempoAtual5Km=",
                 "tempoDesejado=3:00:00",
                 "paceAlvoMeta=4:16 min/km",
                 "ritmoConfortavelAtual=4:30-5:00 min/km",
@@ -133,6 +133,24 @@ class PlanoTreinoReviewPromptBuilderTest {
                 "volume intenso total",
                 "recuperação",
                 "progressão de carga");
+    }
+
+    @Test
+    void regraRunWalkApareceSomenteParaRespostaFalsaAplicavel() throws Exception {
+        GerarPlanoTreinoRequestDTO aplicavel = requestBase("Primeiros 5 km", "5 km");
+        aplicavel.setExperienciaCorrida("Menos de 6 meses");
+        aplicavel.setCorre5KmSemCaminhar(false);
+        String promptAplicavel = prompt(aplicavel);
+        assertThat(promptAplicavel).contains(
+                "corre5KmDireto=",
+                "alternam trote ou corrida leve");
+
+        GerarPlanoTreinoRequestDTO foraDoEscopo = requestBase("Emagrecer", "5 km");
+        foraDoEscopo.setCorre5KmSemCaminhar(false);
+        String promptForaDoEscopo = prompt(foraDoEscopo);
+        assertThat(promptForaDoEscopo)
+                .contains("corre5KmDireto=")
+                .doesNotContain("alternam trote ou corrida leve");
     }
 
     private String prompt(GerarPlanoTreinoRequestDTO request) throws Exception {
