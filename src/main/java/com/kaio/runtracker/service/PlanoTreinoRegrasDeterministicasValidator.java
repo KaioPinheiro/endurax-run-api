@@ -14,8 +14,11 @@ import java.util.Set;
 public class PlanoTreinoRegrasDeterministicasValidator {
     static final int LEAD_MINIMO_PROVA_DIAS = 14;
     private static final String EXPERIENCIA_MENOS_6_MESES = "Menos de 6 meses";
+    private static final String OBJETIVO_COMECAR_A_CORRER = "Começar a correr";
+    private static final Set<String> EXPERIENCIAS_PARA_COMECAR_A_CORRER = Set.of(
+            "Nunca corri",
+            "Estou parado(a)");
     private static final Set<String> OBJETIVOS_MENOS_6_MESES = Set.of(
-            "Começar a correr",
             "Melhorar condicionamento",
             "Emagrecer",
             "Primeiros 5 km",
@@ -101,6 +104,12 @@ public class PlanoTreinoRegrasDeterministicasValidator {
 
     private void validarCompatibilidadeExperienciaObjetivo(
             GerarPlanoTreinoRequestDTO request) {
+        if (OBJETIVO_COMECAR_A_CORRER.equals(request.getObjetivo())
+                && !EXPERIENCIAS_PARA_COMECAR_A_CORRER.contains(
+                        request.getExperienciaCorrida())) {
+            throw new IllegalArgumentException(
+                    "Escolha um objetivo compatível com sua experiência na corrida.");
+        }
         if (EXPERIENCIA_MENOS_6_MESES.equals(request.getExperienciaCorrida())
                 && !OBJETIVOS_MENOS_6_MESES.contains(request.getObjetivo())) {
             throw new IllegalArgumentException(

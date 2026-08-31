@@ -89,7 +89,6 @@ class PlanoTreinoRegrasDeterministicasValidatorTest {
     @Test
     void menosDeSeisMesesAceitaSomenteObjetivosAteDezKm() {
         List<String> permitidos = List.of(
-                "Começar a correr",
                 "Melhorar condicionamento",
                 "Emagrecer",
                 "Primeiros 5 km",
@@ -100,6 +99,33 @@ class PlanoTreinoRegrasDeterministicasValidatorTest {
         for (String objetivo : permitidos) {
             GerarPlanoTreinoRequestDTO request = requestV1(objetivo, "Menos de 6 meses");
             assertDoesNotThrow(() -> validator.prepararNovaSolicitacaoPublicaV1(request), objetivo);
+        }
+    }
+
+    @Test
+    void comecarACorrerEhAceitoSomenteParaQuemNuncaCorreuOuEstaParado() {
+        for (String experiencia : List.of("Nunca corri", "Estou parado(a)")) {
+            GerarPlanoTreinoRequestDTO request = requestV1(
+                    "Começar a correr", experiencia);
+            assertDoesNotThrow(
+                    () -> validator.prepararNovaSolicitacaoPublicaV1(request),
+                    experiencia);
+        }
+
+        for (String experiencia : List.of(
+                "Menos de 6 meses",
+                "6 meses a 1 ano",
+                "1 a 3 anos",
+                "Mais de 3 anos")) {
+            GerarPlanoTreinoRequestDTO request = requestV1(
+                    "Começar a correr", experiencia);
+            IllegalArgumentException erro = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> validator.prepararNovaSolicitacaoPublicaV1(request),
+                    experiencia);
+            assertEquals(
+                    "Escolha um objetivo compatível com sua experiência na corrida.",
+                    erro.getMessage());
         }
     }
 
@@ -124,6 +150,15 @@ class PlanoTreinoRegrasDeterministicasValidatorTest {
     void solicitacaoPersistidaIncompativelTambemEhRejeitadaAntesDoPix() {
         GerarPlanoTreinoRequestDTO request = requestV1(
                 "Primeira Meia Maratona", "Menos de 6 meses");
+
+        assertThrows(IllegalArgumentException.class,
+                () -> validator.validarSolicitacaoPersistidaAntesDoPix(request));
+    }
+
+    @Test
+    void solicitacaoPersistidaComComecarACorrerEExperienciaAtivaEhRejeitadaAntesDoPix() {
+        GerarPlanoTreinoRequestDTO request = requestV1(
+                "Começar a correr", "6 meses a 1 ano");
 
         assertThrows(IllegalArgumentException.class,
                 () -> validator.validarSolicitacaoPersistidaAntesDoPix(request));
