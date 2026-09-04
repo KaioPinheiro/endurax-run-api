@@ -129,6 +129,32 @@ public class PagamentoService {
         return respostaCriacao(salvo);
     }
 
+    @Transactional(noRollbackFor = PagamentoException.class)
+    public void cancelarPorToken(String token) {
+        Pagamento pagamento = buscarPorTokenParaAtualizacao(token);
+        if (pagamento.getStatus() == PagamentoStatus.APPROVED
+                || pagamento.getTrainingPlan() != null
+                || pagamento.getGeracaoStatus() == GeracaoPlanoStatus.PROCESSING
+                || pagamento.getGeracaoStatus() == GeracaoPlanoStatus.COMPLETED) {
+            throw conflitoCancelamento();
+        }
+        if (pagamento.getStatus() == PagamentoStatus.CANCELLED
+                || pagamento.getStatus() == PagamentoStatus.EXPIRED) {
+            return;
+        }
+
+        MercadoPagoOrderResponse order;
+        try {
+            order = mercadoPagoClient.cancelarOrder(
+                    pagamento.getOrderExternalId(), UUID.randomUUID().toString());
+        } catch (PagamentoException falhaCancelamento) {
+            reconciliarAposFalhaDeCancelamento(pagamento, falhaCancelamento);
+            return;
+        }
+
+        confirmarResultadoCancelamento(pagamento, order);
+    }
+
     public PagamentoStatusResponseDTO consultarStatus(Long id) {
         Pagamento pagamento = repository.findById(id).orElseThrow(() ->
                 new PagamentoException(HttpStatus.NOT_FOUND, "Pagamento não encontrado."));
@@ -141,9 +167,11 @@ public class PagamentoService {
 
     private PagamentoStatusResponseDTO consultarStatus(Pagamento pagamento) {
 
-        if (pagamento.getStatus() == PagamentoStatus.APPROVED) {
-            logger.info("Reconciliação ignorada: APPROVED é terminal, pagamentoId={}, orderId={}",
-                    pagamento.getId(), pagamento.getOrderExternalId());
+        if (pagamento.getStatus() == PagamentoStatus.APPROVED
+                || pagamento.getStatus() == PagamentoStatus.CANCELLED
+                || pagamento.getStatus() == PagamentoStatus.EXPIRED) {
+            logger.info("Reconciliação ignorada: status terminal={}, pagamentoId={}, orderId={}",
+                    pagamento.getStatus(), pagamento.getId(), pagamento.getOrderExternalId());
             return respostaStatus(pagamento);
         }
 
@@ -162,6 +190,7 @@ public class PagamentoService {
         if (novoStatus == PagamentoStatus.APPROVED && pagamento.getPagoEm() == null) {
             pagamento.setPagoEm(LocalDateTime.now(clock));
         }
+        if (novoStatus == PagamentoStatus.APPROVED) restaurarSolicitacaoAprovada(pagamento);
         Pagamento atualizado = repository.save(pagamento);
         logger.info("Status Pix atualizado: pagamentoId={}, orderId={}, status={}, statusDetail={}",
                 atualizado.getId(), atualizado.getOrderExternalId(), atualizado.getStatus(), atualizado.getStatusDetail());
@@ -200,6 +229,15 @@ public class PagamentoService {
             return garantirGeracao;
         }
 
+        if (pagamento.getStatus() == PagamentoStatus.CANCELLED) {
+            PagamentoStatus statusRemotoAtual = mapearStatus(statusRemoto, statusDetailRemoto);
+            if (statusRemotoAtual != PagamentoStatus.APPROVED) {
+                logger.info("Webhook Mercado Pago ignorado para cancelamento terminal: pagamentoId={}, orderId={}",
+                        pagamento.getId(), order.id());
+                return null;
+            }
+        }
+
         PagamentoStatus statusAnterior = pagamento.getStatus();
         String detalheAnterior = pagamento.getStatusDetail();
         PagamentoStatus novoStatus = mapearStatus(statusRemoto, statusDetailRemoto);
@@ -214,6 +252,7 @@ public class PagamentoService {
         if (novoStatus == PagamentoStatus.APPROVED && pagamento.getPagoEm() == null) {
             pagamento.setPagoEm(LocalDateTime.now(clock));
         }
+        if (novoStatus == PagamentoStatus.APPROVED) restaurarSolicitacaoAprovada(pagamento);
         pagamento.setAtualizadoEm(LocalDateTime.now(clock));
         repository.save(pagamento);
         logger.info("Webhook Mercado Pago: status atualizado, pagamentoId={}, orderId={}, statusAnterior={}, novoStatus={}",
@@ -385,6 +424,81 @@ public class PagamentoService {
         }
         return repository.findPublicByExternalReference(token).orElseThrow(() ->
                 new PagamentoException(HttpStatus.NOT_FOUND, "Pagamento não encontrado."));
+    }
+
+    private Pagamento buscarPorTokenParaAtualizacao(String token) {
+        if (!StringUtils.hasText(token)) {
+            throw new PagamentoException(HttpStatus.NOT_FOUND, "Pagamento não encontrado.");
+        }
+        return repository.findByExternalReference(token).orElseThrow(() ->
+                new PagamentoException(HttpStatus.NOT_FOUND, "Pagamento não encontrado."));
+    }
+
+    private void confirmarResultadoCancelamento(Pagamento pagamento, MercadoPagoOrderResponse order) {
+        PagamentoStatus statusRemotoAtual = mapearStatus(statusRemoto(order), statusDetailRemoto(order));
+        if (statusRemotoAtual == PagamentoStatus.APPROVED) {
+            registrarAprovacao(pagamento, order);
+            throw conflitoCancelamento();
+        }
+        if (statusRemotoAtual != PagamentoStatus.CANCELLED
+                && statusRemotoAtual != PagamentoStatus.EXPIRED) {
+            throw new PagamentoException(HttpStatus.BAD_GATEWAY,
+                    "O Mercado Pago não confirmou o cancelamento do Pix.");
+        }
+        registrarCancelamento(pagamento, order);
+    }
+
+    private void reconciliarAposFalhaDeCancelamento(
+            Pagamento pagamento,
+            PagamentoException falhaCancelamento) {
+        MercadoPagoOrderResponse order;
+        try {
+            order = mercadoPagoClient.consultarOrder(pagamento.getOrderExternalId());
+        } catch (PagamentoException falhaConsulta) {
+            falhaCancelamento.addSuppressed(falhaConsulta);
+            throw falhaCancelamento;
+        }
+
+        PagamentoStatus statusRemotoAtual = mapearStatus(statusRemoto(order), statusDetailRemoto(order));
+        if (statusRemotoAtual == PagamentoStatus.APPROVED) {
+            registrarAprovacao(pagamento, order);
+            throw conflitoCancelamento();
+        }
+        if (statusRemotoAtual == PagamentoStatus.CANCELLED
+                || statusRemotoAtual == PagamentoStatus.EXPIRED) {
+            registrarCancelamento(pagamento, order);
+            return;
+        }
+        throw falhaCancelamento;
+    }
+
+    private void registrarCancelamento(Pagamento pagamento, MercadoPagoOrderResponse order) {
+        pagamento.setStatus(mapearStatus(statusRemoto(order), statusDetailRemoto(order)));
+        pagamento.setStatusDetail(statusDetailRemoto(order));
+        if (pagamento.getSolicitacaoPlano() != null) {
+            pagamento.getSolicitacaoPlano().setStatus(SolicitacaoPlanoStatus.CANCELLED);
+        }
+        repository.save(pagamento);
+    }
+
+    private void registrarAprovacao(Pagamento pagamento, MercadoPagoOrderResponse order) {
+        pagamento.setStatus(PagamentoStatus.APPROVED);
+        pagamento.setStatusDetail(statusDetailRemoto(order));
+        if (pagamento.getPagoEm() == null) pagamento.setPagoEm(LocalDateTime.now(clock));
+        restaurarSolicitacaoAprovada(pagamento);
+        repository.save(pagamento);
+    }
+
+    private void restaurarSolicitacaoAprovada(Pagamento pagamento) {
+        if (pagamento.getSolicitacaoPlano() != null
+                && pagamento.getSolicitacaoPlano().getStatus() == SolicitacaoPlanoStatus.CANCELLED) {
+            pagamento.getSolicitacaoPlano().setStatus(SolicitacaoPlanoStatus.PAYMENT_PENDING);
+        }
+    }
+
+    private PagamentoException conflitoCancelamento() {
+        return new PagamentoException(HttpStatus.CONFLICT,
+                "O pagamento já foi aprovado ou está sendo processado.");
     }
 
     private PagamentoStatusResponseDTO respostaStatus(Pagamento p) {

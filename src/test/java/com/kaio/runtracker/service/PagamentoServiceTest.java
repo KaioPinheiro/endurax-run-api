@@ -177,6 +177,110 @@ class PagamentoServiceTest {
     }
 
     @Test
+    void cancelaPagamentoPendenteSomenteDepoisDaConfirmacaoRemota() {
+        Pagamento pagamento = pagamentoPendenteComSolicitacao();
+        when(repository.findByExternalReference("EXT123")).thenReturn(Optional.of(pagamento));
+        when(client.cancelarOrder(eq("ORD123"), any())).thenReturn(orderCancelada());
+
+        service.cancelarPorToken("EXT123");
+
+        assertEquals(PagamentoStatus.CANCELLED, pagamento.getStatus());
+        assertEquals(SolicitacaoPlanoStatus.CANCELLED, pagamento.getSolicitacaoPlano().getStatus());
+        verify(repository).save(pagamento);
+    }
+
+    @Test
+    void pagamentoAprovadoNaoEhCancelado() {
+        Pagamento pagamento = pagamentoPendenteComSolicitacao();
+        pagamento.setStatus(PagamentoStatus.APPROVED);
+        when(repository.findByExternalReference("EXT123")).thenReturn(Optional.of(pagamento));
+
+        PagamentoException exception = assertThrows(
+                PagamentoException.class, () -> service.cancelarPorToken("EXT123"));
+
+        assertEquals(409, exception.getStatus().value());
+        assertEquals(PagamentoStatus.APPROVED, pagamento.getStatus());
+        verify(client, never()).cancelarOrder(any(), any());
+    }
+
+    @Test
+    void cancelamentoRepetidoEhIdempotente() {
+        Pagamento pagamento = pagamentoPendenteComSolicitacao();
+        pagamento.setStatus(PagamentoStatus.CANCELLED);
+        pagamento.getSolicitacaoPlano().setStatus(SolicitacaoPlanoStatus.CANCELLED);
+        when(repository.findByExternalReference("EXT123")).thenReturn(Optional.of(pagamento));
+
+        service.cancelarPorToken("EXT123");
+
+        verify(client, never()).cancelarOrder(any(), any());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void falhaRemotaNaoMarcaPagamentoComoCancelado() {
+        Pagamento pagamento = pagamentoPendenteComSolicitacao();
+        PagamentoException falha = new PagamentoException(
+                org.springframework.http.HttpStatus.BAD_GATEWAY, "Falha no cancelamento");
+        when(repository.findByExternalReference("EXT123")).thenReturn(Optional.of(pagamento));
+        when(client.cancelarOrder(eq("ORD123"), any())).thenThrow(falha);
+        when(client.consultarOrder("ORD123")).thenReturn(orderPendente("QR-CODE", "BASE64"));
+
+        assertThrows(PagamentoException.class, () -> service.cancelarPorToken("EXT123"));
+
+        assertEquals(PagamentoStatus.PENDING, pagamento.getStatus());
+        assertEquals(SolicitacaoPlanoStatus.PAYMENT_PENDING, pagamento.getSolicitacaoPlano().getStatus());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void aprovacaoDetectadaNaCorridaVenceOCancelamento() {
+        Pagamento pagamento = pagamentoPendenteComSolicitacao();
+        PagamentoException rejeicao = new PagamentoException(
+                org.springframework.http.HttpStatus.BAD_GATEWAY, "Order já processada");
+        when(repository.findByExternalReference("EXT123")).thenReturn(Optional.of(pagamento));
+        when(client.cancelarOrder(eq("ORD123"), any())).thenThrow(rejeicao);
+        when(client.consultarOrder("ORD123")).thenReturn(orderAprovada());
+
+        PagamentoException exception = assertThrows(
+                PagamentoException.class, () -> service.cancelarPorToken("EXT123"));
+
+        assertEquals(409, exception.getStatus().value());
+        assertEquals(PagamentoStatus.APPROVED, pagamento.getStatus());
+        assertEquals(SolicitacaoPlanoStatus.PAYMENT_PENDING, pagamento.getSolicitacaoPlano().getStatus());
+        verify(repository).save(pagamento);
+    }
+
+    @Test
+    void webhookAtrasadoNaoRessuscitaCancelamento() {
+        Pagamento pagamento = pagamentoPendenteComSolicitacao();
+        pagamento.setStatus(PagamentoStatus.CANCELLED);
+        pagamento.getSolicitacaoPlano().setStatus(SolicitacaoPlanoStatus.CANCELLED);
+        when(client.consultarOrder("ORD123")).thenReturn(orderPendente("QR-CODE", "BASE64"));
+        when(repository.findByExternalReference("EXT123")).thenReturn(Optional.of(pagamento));
+
+        Long pagamentoParaGerar = service.processarWebhookOrder("ORD123");
+
+        assertNull(pagamentoParaGerar);
+        assertEquals(PagamentoStatus.CANCELLED, pagamento.getStatus());
+        assertEquals(SolicitacaoPlanoStatus.CANCELLED, pagamento.getSolicitacaoPlano().getStatus());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void reconciliacaoNaoRessuscitaCancelamento() {
+        Pagamento pagamento = pagamentoPendenteComSolicitacao();
+        pagamento.setStatus(PagamentoStatus.CANCELLED);
+        pagamento.getSolicitacaoPlano().setStatus(SolicitacaoPlanoStatus.CANCELLED);
+        when(repository.findPublicByExternalReference("EXT123")).thenReturn(Optional.of(pagamento));
+
+        PagamentoStatusResponseDTO status = service.consultarStatusPorToken("EXT123");
+
+        assertEquals(PagamentoStatus.CANCELLED, status.status());
+        verify(client, never()).consultarOrder(any());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
     void resultadoPorTokenForneceMesmoTokenParaRecuperarPlano() {
         Pagamento pagamento = pagamentoPendente();
         pagamento.setStatus(PagamentoStatus.APPROVED);
@@ -524,6 +628,10 @@ class PagamentoServiceTest {
         return order("processed", "accredited", "QR-CODE", "BASE64");
     }
 
+    private MercadoPagoOrderResponse orderCancelada() {
+        return order("canceled", "canceled_transaction", "QR-CODE", "BASE64");
+    }
+
     private MercadoPagoOrderResponse order(String status, String detail, String qrCode, String base64) {
         MercadoPagoOrderResponse.PaymentMethod metodo = new MercadoPagoOrderResponse.PaymentMethod(
                 "pix", "bank_transfer", "https://ticket", qrCode, base64);
@@ -546,6 +654,14 @@ class PagamentoServiceTest {
         pagamento.setQrCodeBase64("BASE64");
         pagamento.setTicketUrl("https://ticket");
         pagamento.setDataExpiracao(LocalDateTime.of(2026, 7, 20, 13, 0));
+        return pagamento;
+    }
+
+    private Pagamento pagamentoPendenteComSolicitacao() {
+        Pagamento pagamento = pagamentoPendente();
+        SolicitacaoPlano solicitacao = new SolicitacaoPlano();
+        solicitacao.setStatus(SolicitacaoPlanoStatus.PAYMENT_PENDING);
+        pagamento.setSolicitacaoPlano(solicitacao);
         return pagamento;
     }
 }

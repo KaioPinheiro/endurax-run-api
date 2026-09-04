@@ -91,6 +91,22 @@ class GeracaoPlanoTransacaoServiceTest {
         assertEquals(SolicitacaoPlanoStatus.PROCESSING, pagamento.getSolicitacaoPlano().getStatus());
     }
 
+    @Test
+    void solicitacaoCanceladaNaoReservaGeracao() {
+        PagamentoRepository pagamentoRepository = mock(PagamentoRepository.class);
+        TrainingPlanService trainingPlanService = mock(TrainingPlanService.class);
+        GeracaoPlanoTransacaoService service = new GeracaoPlanoTransacaoService(
+                pagamentoRepository, trainingPlanService, new ObjectMapper());
+        Pagamento pagamento = pagamentoAprovadoComSolicitacao();
+        pagamento.setGeracaoStatus(GeracaoPlanoStatus.PENDING);
+        pagamento.getSolicitacaoPlano().setStatus(SolicitacaoPlanoStatus.CANCELLED);
+        when(pagamentoRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pagamento));
+
+        var reserva = service.reservar(1L);
+
+        assertTrue(reserva.isEmpty());
+    }
+
     private Pagamento pagamentoAprovadoComSolicitacao() {
         Pagamento pagamento = new Pagamento();
         pagamento.setId(1L);

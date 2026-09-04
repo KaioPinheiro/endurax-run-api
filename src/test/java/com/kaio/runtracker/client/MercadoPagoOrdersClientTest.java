@@ -25,6 +25,7 @@ import static org.springframework.http.HttpStatus.BAD_GATEWAY;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.test.web.client.ExpectedCount.once;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 
@@ -67,6 +68,27 @@ class MercadoPagoOrdersClientTest {
         assertFalse(payer.containsKey("first_name"));
         assertFalse(payer.containsValue("test_user_br@testuser.com"));
         assertFalse(payer.containsValue("APRO"));
+    }
+
+    @Test
+    void cancelaOrderComIdempotenciaPropria() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://api.mercadopago.com");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(once(), requestTo("https://api.mercadopago.com/v1/orders/ORD123/cancel"))
+                .andExpect(method(POST))
+                .andExpect(header("Authorization", "Bearer ACCESS_TOKEN"))
+                .andExpect(header("X-Idempotency-Key", "cancel-key"))
+                .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators
+                        .withSuccess("{\"id\":\"ORD123\",\"status\":\"canceled\"}",
+                                MediaType.APPLICATION_JSON));
+        MercadoPagoProperties properties = properties(false);
+        properties.setAccessToken("ACCESS_TOKEN");
+        MercadoPagoOrdersClient client = new MercadoPagoOrdersClient(properties, builder.build());
+
+        MercadoPagoOrderResponse response = client.cancelarOrder("ORD123", "cancel-key");
+
+        assertEquals("canceled", response.status());
+        server.verify();
     }
 
     @Test

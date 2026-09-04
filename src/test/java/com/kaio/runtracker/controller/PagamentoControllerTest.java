@@ -7,6 +7,7 @@ import com.kaio.runtracker.service.PagamentoService;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -44,5 +45,13 @@ class PagamentoControllerTest {
         controller.consultarStatus("TOKEN");
 
         verify(geracaoAssincronaService, never()).iniciar(any());
+    }
+
+    @Test
+    void cancelamentoPorTokenRetornaSemConteudo() {
+        var resposta = controller.cancelar("TOKEN");
+
+        assertTrue(resposta.getStatusCode().is2xxSuccessful());
+        verify(service).cancelarPorToken("TOKEN");
     }
 }

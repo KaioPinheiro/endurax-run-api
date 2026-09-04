@@ -118,6 +118,11 @@ public class PublicEndpointRateLimitFilter extends OncePerRequestFilter {
         if ("POST".equals(method) && "/api/pagamentos/pix".equals(uri)) {
             return new Rule("CRIACAO_PIX", properties.getPix(), uri);
         }
+        if ("POST".equals(method)
+                && uri.matches("^/api/pagamentos/public/[^/]+/cancelar$")) {
+            return new Rule("CANCELAMENTO_PIX", properties.getPix(),
+                    "/api/pagamentos/public/[REDACTED]/cancelar");
+        }
         if ("POST".equals(method) && ("/api/ai/gerar-plano".equals(uri)
                 || "/api/ai/gerar-treino".equals(uri))) {
             return new Rule("GERACAO_IA", properties.getGeracao(), uri);

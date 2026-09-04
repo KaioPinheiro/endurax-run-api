@@ -160,6 +160,24 @@ class PublicEndpointRateLimitFilterTest {
                 .doesNotContain(token);
     }
 
+    @Test
+    void limitaCancelamentoPublicoSemRegistrarToken() throws Exception {
+        String token = "550e8400-e29b-41ce-98fd-7fd50b809672";
+        String rota = "/api/pagamentos/public/" + token + "/cancelar";
+
+        assertThat(execute("POST", rota, "203.0.113.20").getStatus()).isEqualTo(204);
+        assertThat(execute("POST", rota, "203.0.113.20").getStatus()).isEqualTo(204);
+        assertThat(execute("POST", rota, "203.0.113.20").getStatus()).isEqualTo(429);
+
+        String logs = appender.list.stream()
+                .map(ILoggingEvent::getFormattedMessage)
+                .reduce("", (left, right) -> left + right);
+        assertThat(logs)
+                .contains("categoria=CANCELAMENTO_PIX",
+                        "/api/pagamentos/public/[REDACTED]/cancelar")
+                .doesNotContain(token);
+    }
+
     private MockHttpServletResponse execute(String method, String uri, String remoteAddress)
             throws Exception {
         return execute(request(method, uri, remoteAddress));

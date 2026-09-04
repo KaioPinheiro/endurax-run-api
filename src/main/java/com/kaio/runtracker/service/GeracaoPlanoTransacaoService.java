@@ -38,6 +38,8 @@ public class GeracaoPlanoTransacaoService {
         Pagamento pagamento = pagamentoRepository.findByIdForUpdate(pagamentoId).orElse(null);
         if (pagamento == null
                 || pagamento.getStatus() != PagamentoStatus.APPROVED
+                || (pagamento.getSolicitacaoPlano() != null
+                    && pagamento.getSolicitacaoPlano().getStatus() == SolicitacaoPlanoStatus.CANCELLED)
                 || pagamento.getTrainingPlan() != null
                 || pagamento.getGeracaoStatus() == GeracaoPlanoStatus.PROCESSING
                 || pagamento.getGeracaoStatus() == GeracaoPlanoStatus.COMPLETED) {

@@ -65,4 +65,10 @@ public class PagamentoController {
         geracaoAssincronaService.iniciar(service.buscarIdPorToken(token));
         return ResponseEntity.accepted().build();
     }
+
+    @PostMapping("/public/{token}/cancelar")
+    public ResponseEntity<Void> cancelar(@PathVariable String token) {
+        service.cancelarPorToken(token);
+        return ResponseEntity.noContent().build();
+    }
 }

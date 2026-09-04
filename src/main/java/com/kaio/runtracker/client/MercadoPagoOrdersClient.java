@@ -103,6 +103,19 @@ public class MercadoPagoOrdersClient {
                 .body(MercadoPagoOrderResponse.class));
     }
 
+    public MercadoPagoOrderResponse cancelarOrder(String orderId, String idempotencyKey) {
+        return executar("cancelamento", () -> restClient.post()
+                .uri("/v1/orders/{id}/cancel", orderId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .headers(headers -> {
+                    headers.setBearerAuth(properties.getAccessToken());
+                    headers.set("X-Idempotency-Key", idempotencyKey);
+                })
+                .retrieve()
+                .body(MercadoPagoOrderResponse.class));
+    }
+
     private MercadoPagoOrderResponse executar(String operacao, Chamada chamada) {
         long inicio = System.nanoTime();
         try {
