@@ -22,7 +22,9 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -81,10 +83,33 @@ class PagamentoServiceTest {
         assertEquals(new BigDecimal("12.90"), response.valor());
         assertEquals("QR-CODE", response.pixCopiaCola());
         assertEquals("BASE64", response.qrCodeBase64());
-        assertEquals(LocalDateTime.of(2026, 7, 20, 12, 15), response.dataExpiracao());
+        assertEquals(OffsetDateTime.of(2026, 7, 20, 12, 15, 0, 0,
+                ZoneOffset.ofHours(-3)), response.dataExpiracao());
         ArgumentCaptor<Pagamento> pagamentoCaptor = ArgumentCaptor.forClass(Pagamento.class);
         verify(repository).save(pagamentoCaptor.capture());
         assertEquals("cliente@email.com", pagamentoCaptor.getValue().getEmailPagador());
+    }
+
+    @Test
+    void preservaInstanteUtcNaExpiracaoDeQuinzeMinutos() {
+        MercadoPagoProperties properties = new MercadoPagoProperties();
+        properties.setValorPlano(new BigDecimal("12.90"));
+        properties.setExpiracaoPixMinutos(15);
+        Clock clockUtc = Clock.fixed(Instant.parse("2026-07-20T15:00:00Z"), ZoneOffset.UTC);
+        PagamentoService serviceUtc = new PagamentoService(
+                repository, client, properties, solicitacaoPlanoRepository, clockUtc);
+        when(client.criarOrderPix(eq("cliente@email.com"), any(), any(),
+                eq(new BigDecimal("12.90")))).thenReturn(orderPendente("QR-CODE", "BASE64"));
+        when(repository.save(any(Pagamento.class))).thenAnswer(invocation -> {
+            Pagamento pagamento = invocation.getArgument(0);
+            pagamento.setId(1L);
+            return pagamento;
+        });
+
+        CriarPagamentoPixResponseDTO response = serviceUtc.criarPix("cliente@email.com");
+
+        assertEquals(OffsetDateTime.parse("2026-07-20T15:15:00Z"), response.dataExpiracao());
+        assertEquals(900, response.dataExpiracao().toEpochSecond() - clockUtc.instant().getEpochSecond());
     }
 
     @Test
@@ -561,7 +586,8 @@ class PagamentoServiceTest {
         assertEquals(new BigDecimal("12.90"), resultado.valor());
         assertEquals("QR-CODE", resultado.pixCopiaCola());
         assertEquals("BASE64", resultado.qrCodeBase64());
-        assertEquals(LocalDateTime.of(2026, 7, 20, 13, 0), resultado.dataExpiracao());
+        assertEquals(OffsetDateTime.of(2026, 7, 20, 13, 0, 0, 0,
+                ZoneOffset.ofHours(-3)), resultado.dataExpiracao());
     }
 
     @Test

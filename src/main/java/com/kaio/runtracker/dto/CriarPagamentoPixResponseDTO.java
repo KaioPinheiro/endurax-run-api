@@ -3,7 +3,7 @@ package com.kaio.runtracker.dto;
 import com.kaio.runtracker.entity.PagamentoStatus;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 public record CriarPagamentoPixResponseDTO(
         Long pagamentoId,
@@ -13,5 +13,5 @@ public record CriarPagamentoPixResponseDTO(
         String pixCopiaCola,
         String qrCodeBase64,
         String ticketUrl,
-        LocalDateTime dataExpiracao) {
+        OffsetDateTime dataExpiracao) {
 }

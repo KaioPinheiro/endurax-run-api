@@ -315,7 +315,7 @@ public class PagamentoService {
         return new PagamentoResultadoResponseDTO(
                 pagamento.getId(), pagamento.getStatus(), pagamento.getGeracaoStatus(), planoToken, mensagem,
                 pagamento.getValor(), pagamento.getPixCopiaCola(), pagamento.getQrCodeBase64(),
-                pagamento.getTicketUrl(), pagamento.getDataExpiracao());
+                pagamento.getTicketUrl(), dataExpiracaoComOffset(pagamento.getDataExpiracao()));
     }
 
     private SolicitacaoPlano buscarSolicitacao(Long solicitacaoPlanoId, String emailNormalizado) {
@@ -415,7 +415,12 @@ public class PagamentoService {
 
     private CriarPagamentoPixResponseDTO respostaCriacao(Pagamento p) {
         return new CriarPagamentoPixResponseDTO(p.getId(), p.getExternalReference(), p.getStatus(), p.getValor(),
-                p.getPixCopiaCola(), p.getQrCodeBase64(), p.getTicketUrl(), p.getDataExpiracao());
+                p.getPixCopiaCola(), p.getQrCodeBase64(), p.getTicketUrl(),
+                dataExpiracaoComOffset(p.getDataExpiracao()));
+    }
+
+    private OffsetDateTime dataExpiracaoComOffset(LocalDateTime dataExpiracao) {
+        return dataExpiracao == null ? null : dataExpiracao.atZone(clock.getZone()).toOffsetDateTime();
     }
 
     private Pagamento buscarPorToken(String token) {

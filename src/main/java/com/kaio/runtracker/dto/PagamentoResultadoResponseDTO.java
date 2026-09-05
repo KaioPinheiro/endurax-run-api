@@ -4,7 +4,7 @@ import com.kaio.runtracker.entity.GeracaoPlanoStatus;
 import com.kaio.runtracker.entity.PagamentoStatus;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 public record PagamentoResultadoResponseDTO(
         Long pagamentoId,
@@ -16,5 +16,5 @@ public record PagamentoResultadoResponseDTO(
         String pixCopiaCola,
         String qrCodeBase64,
         String ticketUrl,
-        LocalDateTime dataExpiracao) {
+        OffsetDateTime dataExpiracao) {
 }
