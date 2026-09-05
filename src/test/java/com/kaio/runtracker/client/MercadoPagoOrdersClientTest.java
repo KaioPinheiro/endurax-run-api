@@ -18,6 +18,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.springframework.http.HttpMethod.POST;
@@ -26,6 +27,7 @@ import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.test.web.client.ExpectedCount.once;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 
@@ -68,6 +70,27 @@ class MercadoPagoOrdersClientTest {
         assertFalse(payer.containsKey("first_name"));
         assertFalse(payer.containsValue("test_user_br@testuser.com"));
         assertFalse(payer.containsValue("APRO"));
+    }
+
+    @Test
+    void enviaExpiracaoRealDeQuinzeMinutosNaOrderPix() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://api.mercadopago.com");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(once(), requestTo("https://api.mercadopago.com/v1/orders"))
+                .andExpect(method(POST))
+                .andExpect(content().string(containsString("\"expiration_time\":\"PT15M\"")))
+                .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators
+                        .withSuccess("{\"id\":\"ORD123\",\"status\":\"pending\"}",
+                                MediaType.APPLICATION_JSON));
+        MercadoPagoProperties properties = properties(false);
+        properties.setAccessToken("ACCESS_TOKEN");
+        properties.setExpiracaoPixMinutos(15);
+        MercadoPagoOrdersClient client = new MercadoPagoOrdersClient(properties, builder.build());
+
+        client.criarOrderPix("cliente@email.com", "referencia", "idempotencia",
+                new BigDecimal("12.90"));
+
+        server.verify();
     }
 
     @Test
@@ -253,7 +276,7 @@ class MercadoPagoOrdersClientTest {
                 .andRespond(withStatus(status).contentType(contentType).body(resposta));
         MercadoPagoProperties properties = properties(false);
         properties.setAccessToken(token);
-        properties.setExpiracaoPixMinutos(30);
+        properties.setExpiracaoPixMinutos(15);
         return new ClienteMock(new MercadoPagoOrdersClient(properties, builder.build()), server);
     }
 

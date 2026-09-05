@@ -55,7 +55,7 @@ class PagamentoServiceTest {
         MercadoPagoProperties properties = new MercadoPagoProperties();
         properties.setAccessToken("TEST_TOKEN");
         properties.setValorPlano(new BigDecimal("12.90"));
-        properties.setExpiracaoPixMinutos(30);
+        properties.setExpiracaoPixMinutos(15);
         Clock clock = Clock.fixed(
                 Instant.parse("2026-07-20T15:00:00Z"),
                 ZoneId.of("America/Sao_Paulo")
@@ -81,6 +81,7 @@ class PagamentoServiceTest {
         assertEquals(new BigDecimal("12.90"), response.valor());
         assertEquals("QR-CODE", response.pixCopiaCola());
         assertEquals("BASE64", response.qrCodeBase64());
+        assertEquals(LocalDateTime.of(2026, 7, 20, 12, 15), response.dataExpiracao());
         ArgumentCaptor<Pagamento> pagamentoCaptor = ArgumentCaptor.forClass(Pagamento.class);
         verify(repository).save(pagamentoCaptor.capture());
         assertEquals("cliente@email.com", pagamentoCaptor.getValue().getEmailPagador());
