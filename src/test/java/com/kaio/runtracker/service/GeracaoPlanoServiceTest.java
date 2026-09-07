@@ -9,6 +9,7 @@ import com.kaio.runtracker.ai.agent.ValidationResult;
 import com.kaio.runtracker.dto.GerarPlanoTreinoRequestDTO;
 import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDate;
 import java.util.Optional;
@@ -25,6 +26,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class GeracaoPlanoServiceTest {
     private final GeracaoPlanoTransacaoService transacaoService = mock(GeracaoPlanoTransacaoService.class);
@@ -44,7 +46,10 @@ class GeracaoPlanoServiceTest {
 
         service.gerar(1L);
 
-        verify(agent).execute(any(AgentExecutionContext.class));
+        ArgumentCaptor<AgentExecutionContext> agentContext =
+                ArgumentCaptor.forClass(AgentExecutionContext.class);
+        verify(agent).execute(agentContext.capture());
+        assertEquals("123", agentContext.getValue().identificadorTecnico());
         verify(transacaoService).concluir(contexto, plano);
         verify(transacaoService, never()).falhar(1L);
     }
@@ -127,7 +132,8 @@ class GeracaoPlanoServiceTest {
     }
 
     private GeracaoPlanoTransacaoService.GeracaoContexto contexto() {
-        return new GeracaoPlanoTransacaoService.GeracaoContexto(1L, new GerarPlanoTreinoRequestDTO());
+        return new GeracaoPlanoTransacaoService.GeracaoContexto(
+                1L, 123L, new GerarPlanoTreinoRequestDTO());
     }
 
     private void prepararAgente(

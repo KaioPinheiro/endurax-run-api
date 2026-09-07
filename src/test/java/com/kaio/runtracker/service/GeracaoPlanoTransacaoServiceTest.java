@@ -58,7 +58,7 @@ class GeracaoPlanoTransacaoServiceTest {
         plano.setId(10L);
         GerarPlanoTreinoRequestDTO formulario = new GerarPlanoTreinoRequestDTO();
         PlanoTreinoIAResponseDTO resposta = new PlanoTreinoIAResponseDTO();
-        var contexto = new GeracaoPlanoTransacaoService.GeracaoContexto(1L, formulario);
+        var contexto = new GeracaoPlanoTransacaoService.GeracaoContexto(1L, 123L, formulario);
         when(trainingPlanService.salvarPlanoGerado(formulario, resposta)).thenReturn(plano);
 
         Long planoId = service.concluir(contexto, resposta);
@@ -112,6 +112,7 @@ class GeracaoPlanoTransacaoServiceTest {
         pagamento.setId(1L);
         pagamento.setStatus(PagamentoStatus.APPROVED);
         SolicitacaoPlano solicitacao = new SolicitacaoPlano();
+        solicitacao.setId(123L);
         solicitacao.setStatus(SolicitacaoPlanoStatus.PROCESSING);
         pagamento.setSolicitacaoPlano(solicitacao);
         return pagamento;

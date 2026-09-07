@@ -10,6 +10,8 @@ import com.kaio.runtracker.entity.PagamentoStatus;
 import com.kaio.runtracker.entity.SolicitacaoPlanoStatus;
 import com.kaio.runtracker.entity.TrainingPlan;
 import com.kaio.runtracker.repository.PagamentoRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +20,7 @@ import java.util.Optional;
 
 @Service
 public class GeracaoPlanoTransacaoService {
+    private static final Logger logger = LoggerFactory.getLogger(GeracaoPlanoTransacaoService.class);
     private static final String MENSAGEM_FALHA = "Não foi possível gerar o plano neste momento.";
 
     private final PagamentoRepository pagamentoRepository;
@@ -60,12 +63,16 @@ public class GeracaoPlanoTransacaoService {
             pagamento.setGeracaoMensagem(null);
             pagamento.getSolicitacaoPlano().setStatus(SolicitacaoPlanoStatus.PROCESSING);
             pagamentoRepository.save(pagamento);
-            return Optional.of(new GeracaoContexto(pagamentoId, formulario));
+            return Optional.of(new GeracaoContexto(
+                    pagamentoId, pagamento.getSolicitacaoPlano().getId(), formulario));
         } catch (JsonProcessingException exception) {
             pagamento.setGeracaoStatus(GeracaoPlanoStatus.FAILED);
             pagamento.setGeracaoMensagem(MENSAGEM_FALHA);
             pagamento.getSolicitacaoPlano().setStatus(SolicitacaoPlanoStatus.FAILED);
             pagamentoRepository.save(pagamento);
+            logger.error(
+                    "Falha definitiva na geração: solicitacaoPlanoId={}, etapa=RESERVATION, motivo=formulario_invalido",
+                    pagamento.getSolicitacaoPlano().getId(), exception);
             return Optional.empty();
         }
     }
@@ -104,6 +111,9 @@ public class GeracaoPlanoTransacaoService {
         pagamentoRepository.save(pagamento);
     }
 
-    public record GeracaoContexto(Long pagamentoId, GerarPlanoTreinoRequestDTO formulario) {
+    public record GeracaoContexto(
+            Long pagamentoId,
+            Long solicitacaoPlanoId,
+            GerarPlanoTreinoRequestDTO formulario) {
     }
 }

@@ -198,7 +198,7 @@ class TrainingPlanAgentTest {
         assertThat(exception.getErrors()).containsExactlyElementsOf(erros);
         String log = logCompleto();
         assertThat(log).contains(
-                "id=teste-1, tentativa=1, severidade=ERROR, indice=1",
+                "solicitacaoPlanoId=teste-1, tentativa=1, severidade=ERROR, indice=1",
                 "Linha 1 Linha 2 [REDACTED_EMAIL] [REDACTED_UUID]",
                 "Bearer [REDACTED] [REDACTED_JWT] [REDACTED_API_KEY] [REDACTED_CREDENTIAL]",
                 "severidade=ERROR, indice=2",

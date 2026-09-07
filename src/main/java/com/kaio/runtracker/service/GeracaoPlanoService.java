@@ -7,6 +7,7 @@ import com.kaio.runtracker.ai.agent.TrainingPlanAgent;
 import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -29,6 +30,7 @@ public class GeracaoPlanoService {
     }
 
     public void gerar(Long pagamentoId) {
+        long inicioTotal = System.nanoTime();
         Optional<GeracaoPlanoTransacaoService.GeracaoContexto> reserva =
                 transacaoService.reservar(pagamentoId);
         if (reserva.isEmpty()) {
@@ -38,22 +40,50 @@ public class GeracaoPlanoService {
         }
 
         GeracaoPlanoTransacaoService.GeracaoContexto contexto = reserva.get();
-        logger.info("Iniciando geração automática do plano: pagamentoId={}", pagamentoId);
+        String solicitacaoPlanoId = String.valueOf(contexto.solicitacaoPlanoId());
+        MDC.put("solicitacaoPlanoId", solicitacaoPlanoId);
+        MDC.put("etapa", "GENERATION");
         try {
             int duracaoSemanas = duracaoCalculator.calcular(contexto.formulario());
+            logger.info(
+                    "Geração iniciada: solicitacaoPlanoId={}, objetivo={}, experiencia={}, semanas={}, diasDisponiveis={}",
+                    contexto.solicitacaoPlanoId(), contexto.formulario().getObjetivo(),
+                    contexto.formulario().getExperienciaCorrida(), duracaoSemanas,
+                    contexto.formulario().getDiasDisponiveis() == null
+                            ? 0 : contexto.formulario().getDiasDisponiveis().size());
             AgentExecutionContext agentContext = new AgentExecutionContext(
                     contexto.formulario(),
                     duracaoSemanas,
                     duracaoCalculator.hoje(),
-                    "pagamento-" + pagamentoId);
+                    solicitacaoPlanoId);
             AgentExecutionResult resultado = trainingPlanAgent.execute(agentContext);
             PlanoTreinoIAResponseDTO plano = resultado.plano();
+            MDC.put("etapa", "PERSISTENCE");
             Long planoId = transacaoService.concluir(contexto, plano);
-            logger.info("Plano gerado automaticamente: pagamentoId={}, planoId={}", pagamentoId, planoId);
+            if (planoId == null) {
+                logger.error(
+                        "Falha definitiva na geração: solicitacaoPlanoId={}, etapa=PERSISTENCE, motivo=plano_nao_persistido, duracaoMs={}",
+                        contexto.solicitacaoPlanoId(), tempoMs(inicioTotal));
+            } else {
+                logger.info(
+                        "Geração concluída: solicitacaoPlanoId={}, planoId={}, semanas={}, duracaoMs={}",
+                        contexto.solicitacaoPlanoId(), planoId,
+                        plano != null && plano.getSemanas() != null ? plano.getSemanas().size() : 0,
+                        tempoMs(inicioTotal));
+            }
         } catch (Exception exception) {
             transacaoService.falhar(pagamentoId);
-            logger.error("Falha na geração automática do plano: pagamentoId={}, tipoErro={}",
-                    pagamentoId, exception.getClass().getSimpleName());
+            logger.error(
+                    "Falha definitiva na geração: solicitacaoPlanoId={}, etapa={}, tipoErro={}",
+                    contexto.solicitacaoPlanoId(), MDC.get("etapa"),
+                    exception.getClass().getSimpleName(), exception);
+        } finally {
+            MDC.remove("etapa");
+            MDC.remove("solicitacaoPlanoId");
         }
+    }
+
+    private long tempoMs(long inicioNanos) {
+        return (System.nanoTime() - inicioNanos) / 1_000_000;
     }
 }
