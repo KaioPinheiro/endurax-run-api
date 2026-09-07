@@ -133,7 +133,7 @@ public class PlanoTreinoRespostaParser {
         int quantidadeOriginal = plano.getSemanas() == null
                 ? 0
                 : plano.getSemanas().size();
-        logger.info(
+        logger.debug(
                 "Plano completo IA: quantidade de semanas retornada antes da normalização={}",
                 quantidadeOriginal
         );
@@ -154,7 +154,7 @@ public class PlanoTreinoRespostaParser {
 
                 int numero = semana.getNumeroSemana();
                 if (numero < 1 || numero > duracaoEsperada) {
-                    logger.info("Plano completo IA: semana extra descartada={}", numero);
+                    logger.debug("Plano completo IA: semana extra descartada={}", numero);
                     continue;
                 }
 
@@ -205,7 +205,7 @@ public class PlanoTreinoRespostaParser {
         plano.setDuracaoSemanas(duracaoEsperada);
         plano.setSemanas(semanasNormalizadas);
 
-        logger.info(
+        logger.debug(
                 "Plano completo IA: quantidade final após normalização={}",
                 semanasNormalizadas.size()
         );
@@ -266,7 +266,7 @@ public class PlanoTreinoRespostaParser {
         validarTreinosNosDiasDisponiveis(
                 ordenados, diasDisponiveis, contexto, possuiProva, diaLongao);
 
-        logger.info(
+        logger.debug(
                 "Plano completo IA: dias preenchidos em {}={}",
                 contexto,
                 diasPreenchidos

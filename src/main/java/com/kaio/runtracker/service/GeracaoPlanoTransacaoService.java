@@ -71,7 +71,7 @@ public class GeracaoPlanoTransacaoService {
             pagamento.getSolicitacaoPlano().setStatus(SolicitacaoPlanoStatus.FAILED);
             pagamentoRepository.save(pagamento);
             logger.error(
-                    "Falha definitiva na geração: solicitacaoPlanoId={}, etapa=RESERVATION, motivo=formulario_invalido",
+                    "solicitacaoPlanoId={} etapa=RESERVATION status=FAILED motivo=formulario_invalido",
                     pagamento.getSolicitacaoPlano().getId(), exception);
             return Optional.empty();
         }

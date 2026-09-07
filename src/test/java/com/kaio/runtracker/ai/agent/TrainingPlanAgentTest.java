@@ -198,14 +198,14 @@ class TrainingPlanAgentTest {
         assertThat(exception.getErrors()).containsExactlyElementsOf(erros);
         String log = logCompleto();
         assertThat(log).contains(
-                "solicitacaoPlanoId=teste-1, tentativa=1, severidade=ERROR, indice=1",
+                "solicitacaoPlanoId=teste-1 etapa=REVIEW status=DETAIL tentativa=1 severidade=ERROR indice=1",
                 "Linha 1 Linha 2 [REDACTED_EMAIL] [REDACTED_UUID]",
                 "Bearer [REDACTED] [REDACTED_JWT] [REDACTED_API_KEY] [REDACTED_CREDENTIAL]",
-                "severidade=ERROR, indice=2",
+                "severidade=ERROR indice=2",
                 "... [truncado]",
-                "severidade=WARNING, indice=1, mensagem=warning um",
-                "severidade=WARNING, indice=2, mensagem=warning dois",
-                "severidade=ERROR, omitidos=2");
+                "severidade=WARNING indice=1 mensagem=warning um",
+                "severidade=WARNING indice=2 mensagem=warning dois",
+                "severidade=ERROR omitidos=2");
         assertThat(log).doesNotContain(
                 "cliente@example.com",
                 "550e8400-e29b-41d4-a716-446655440000",

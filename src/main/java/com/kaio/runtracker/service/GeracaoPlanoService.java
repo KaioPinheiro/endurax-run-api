@@ -46,9 +46,8 @@ public class GeracaoPlanoService {
         try {
             int duracaoSemanas = duracaoCalculator.calcular(contexto.formulario());
             logger.info(
-                    "Geração iniciada: solicitacaoPlanoId={}, objetivo={}, experiencia={}, semanas={}, diasDisponiveis={}",
-                    contexto.solicitacaoPlanoId(), contexto.formulario().getObjetivo(),
-                    contexto.formulario().getExperienciaCorrida(), duracaoSemanas,
+                    "solicitacaoPlanoId={} etapa=PIPELINE status=STARTED semanas={} diasDisponiveis={}",
+                    contexto.solicitacaoPlanoId(), duracaoSemanas,
                     contexto.formulario().getDiasDisponiveis() == null
                             ? 0 : contexto.formulario().getDiasDisponiveis().size());
             AgentExecutionContext agentContext = new AgentExecutionContext(
@@ -62,19 +61,20 @@ public class GeracaoPlanoService {
             Long planoId = transacaoService.concluir(contexto, plano);
             if (planoId == null) {
                 logger.error(
-                        "Falha definitiva na geração: solicitacaoPlanoId={}, etapa=PERSISTENCE, motivo=plano_nao_persistido, duracaoMs={}",
+                        "solicitacaoPlanoId={} etapa=PERSISTENCE status=FAILED motivo=plano_nao_persistido duracaoMs={}",
                         contexto.solicitacaoPlanoId(), tempoMs(inicioTotal));
             } else {
                 logger.info(
-                        "Geração concluída: solicitacaoPlanoId={}, planoId={}, semanas={}, duracaoMs={}",
+                        "solicitacaoPlanoId={} etapa=PERSISTENCE status=SUCCESS planoId={} semanas={}",
                         contexto.solicitacaoPlanoId(), planoId,
-                        plano != null && plano.getSemanas() != null ? plano.getSemanas().size() : 0,
-                        tempoMs(inicioTotal));
+                        plano != null && plano.getSemanas() != null ? plano.getSemanas().size() : 0);
+                logger.info("solicitacaoPlanoId={} etapa=PIPELINE status=SUCCESS duracaoMs={}",
+                        contexto.solicitacaoPlanoId(), tempoMs(inicioTotal));
             }
         } catch (Exception exception) {
             transacaoService.falhar(pagamentoId);
             logger.error(
-                    "Falha definitiva na geração: solicitacaoPlanoId={}, etapa={}, tipoErro={}",
+                    "solicitacaoPlanoId={} etapa={} status=FAILED tipoErro={}",
                     contexto.solicitacaoPlanoId(), MDC.get("etapa"),
                     exception.getClass().getSimpleName(), exception);
         } finally {

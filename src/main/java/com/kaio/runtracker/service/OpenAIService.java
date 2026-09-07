@@ -159,7 +159,7 @@ public class OpenAIService {
         } catch (GerarTreinoIAException exception) {
             throw exception;
         } catch (JsonProcessingException exception) {
-            logger.error(
+            logger.warn(
                     "JSON inválido em {}: class={}, message={}",
                     contexto,
                     exception.getClass().getName(),
@@ -184,7 +184,7 @@ public class OpenAIService {
                     exception
             );
         } catch (Exception exception) {
-            logger.error(
+            logger.warn(
                     "Erro inesperado em {}: class={}, message={}",
                     contexto,
                     exception.getClass().getName(),

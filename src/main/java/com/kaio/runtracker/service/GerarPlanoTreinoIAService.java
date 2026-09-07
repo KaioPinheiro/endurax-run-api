@@ -117,9 +117,9 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
 
         try {
             if (logDetalhado) {
-                logger.info("Request: geracaoId={}\n{}", geracaoId, jsonLog(requestParaLog(request)));
+                logger.debug("Request: geracaoId={}\n{}", geracaoId, jsonLog(requestParaLog(request)));
             } else {
-                logger.info("Geração automática recebida: geracaoId={}, duracaoSemanas={}, quantidadeDias={}",
+                logger.debug("Geração automática recebida: geracaoId={}, duracaoSemanas={}, quantidadeDias={}",
                         geracaoId, request.getDuracaoSemanas(),
                         request.getDiasDisponiveis() != null ? request.getDiasDisponiveis().size() : 0);
             }
@@ -131,7 +131,7 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
             validarRegrasDeterministicas(request);
             validacaoMs = tempoMs(inicioValidacao);
 
-            logger.info(
+            logger.debug(
                     "Plano IA validado: geracaoId={}, possuiProva={}, duracaoSemanas={}, model={}, validacaoMs={}",
                     geracaoId,
                     Boolean.TRUE.equals(request.getPossuiProva()),
@@ -153,9 +153,10 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
             GerarTreinoIAException ultimaFalhaParser = null;
             for (int tentativa = 1; tentativa <= MAX_TENTATIVAS_GERACAO; tentativa++) {
                 logger.info(
-                        "Enviando plano para OpenAI: geracaoId={}, tentativa={}/{}, duracaoSemanas={}, diasDisponiveis={}",
+                        "OpenAI chamada iniciada: geracaoId={} tentativa={}/{} duracaoSemanas={} quantidadeDias={}",
                         geracaoId, tentativa, MAX_TENTATIVAS_GERACAO,
-                        duracaoSemanas, request.getDiasDisponiveis()
+                        duracaoSemanas,
+                        request.getDiasDisponiveis() == null ? 0 : request.getDiasDisponiveis().size()
                 );
                 String resposta;
                 long inicioOpenAI = System.nanoTime();
@@ -170,7 +171,7 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
                     openaiMs += tempoMs(inicioOpenAI);
                 }
 
-                logger.info(
+                logger.debug(
                         "Resposta da OpenAI recebida: geracaoId={}, tentativa={}/{}, respostaChars={}",
                         geracaoId, tentativa, MAX_TENTATIVAS_GERACAO,
                         resposta == null ? 0 : resposta.length()
@@ -187,13 +188,13 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
                     );
                     parserMs += tempoMs(inicioParser);
                     logger.info(
-                            "Resposta validada: geracaoId={}, semanas={}, treinos={}, possuiAlerta={}",
+                            "etapa=PARSER status=SUCCESS geracaoId={} tentativa={} semanas={} treinos={}",
                             geracaoId,
+                            tentativa,
                             quantidadeSemanas(plano),
-                            quantidadeTreinos(plano),
-                            StringUtils.hasText(plano.getAlerta())
+                            quantidadeTreinos(plano)
                     );
-                    logger.info(
+                    logger.debug(
                             "Plano IA gerado com sucesso: geracaoId={}, tentativa={}, semanas={}, treinos={}, possuiAlerta={}, parserMs={}, totalMs={}",
                             geracaoId,
                             tentativa,
@@ -220,21 +221,21 @@ public class GerarPlanoTreinoIAService implements TrainingPlanGenerator {
 
             throw ultimaFalhaParser;
         } catch (GerarTreinoIAException exception) {
-            logger.warn(
+            logger.debug(
                     "Falha ao gerar plano IA: geracaoId={}, status={}, motivo={}, totalMs={}",
                     geracaoId, exception.getStatus(), valorLog(exception.getMessage()),
                     tempoMs(inicioTotal)
             );
             throw exception;
         } catch (RuntimeException exception) {
-            logger.error(
+            logger.debug(
                     "Erro inesperado ao gerar plano IA: geracaoId={}, classe={}, motivo={}, totalMs={}",
                     geracaoId, exception.getClass().getSimpleName(),
                     valorLog(exception.getMessage()), tempoMs(inicioTotal), exception
             );
             throw exception;
         } finally {
-            logger.info(
+            logger.debug(
                     "Plano IA metricas finais: geracaoId={}, duracaoSemanas={}, validacaoMs={}, promptMs={}, openaiMs={}, parserMs={}, totalMs={}",
                     geracaoId,
                     duracaoSemanas,

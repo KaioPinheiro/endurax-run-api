@@ -50,49 +50,52 @@ public class TrainingPlanAgent {
     }
 
     public AgentExecutionResult execute(AgentExecutionContext context) {
-        logger.info("Agente iniciado: solicitacaoPlanoId={}, semanas={}",
-                context.identificadorTecnico(), context.duracaoSemanas());
         MDC.put("etapa", "GENERATION");
         long inicioEtapa = System.nanoTime();
-        logger.info("Etapa iniciada: solicitacaoPlanoId={}, etapa=GENERATION, tentativa=0",
-                context.identificadorTecnico());
         PlanoTreinoIAResponseDTO plano = generator.generate(context);
-        logger.info("Etapa concluída: solicitacaoPlanoId={}, etapa=GENERATION, tentativa=0, duracaoMs={}",
+        logger.info("solicitacaoPlanoId={} etapa=GENERATION status=SUCCESS tentativa=0 duracaoMs={}",
                 context.identificadorTecnico(), tempoMs(inicioEtapa));
 
         for (int tentativa = 0; tentativa <= maxCorrectionAttempts; tentativa++) {
             MDC.put("etapa", "VALIDATION");
             ValidationResult validacao = validator.validate(plano, context);
-            logger.info(
-                    "Validação concluída: solicitacaoPlanoId={}, etapa=VALIDATION, tentativa={}, errosSemanais={}, errosGlobais={}, avisos={}",
-                    context.identificadorTecnico(), tentativa,
-                    quantidadeComPrefixo(validacao, "Semana"),
-                    quantidadeComPrefixo(validacao, "Global"),
-                    validacao.getWarnings().size());
+            if (validacao.isValid()) {
+                logger.info(
+                        "solicitacaoPlanoId={} etapa=VALIDATION status=SUCCESS tentativa={} avisos={}",
+                        context.identificadorTecnico(), tentativa, validacao.getWarnings().size());
+            } else {
+                logger.warn(
+                        "solicitacaoPlanoId={} etapa=VALIDATION status=REJECTED tentativa={} erros={} errosSemanais={} errosGlobais={} avisos={}",
+                        context.identificadorTecnico(), tentativa, validacao.getErrors().size(),
+                        quantidadeComPrefixo(validacao, "Semana"),
+                        quantidadeComPrefixo(validacao, "Global"), validacao.getWarnings().size());
+            }
             registrarErrosValidacao(context.identificadorTecnico(), tentativa, validacao.getErrors());
 
             MDC.put("etapa", "REVIEW");
             inicioEtapa = System.nanoTime();
-            logger.info("Revisão iniciada: solicitacaoPlanoId={}, etapa=REVIEW, tentativa={}",
-                    context.identificadorTecnico(), tentativa);
             ReviewResult revisao = reviewer.review(plano, context);
-            logger.info("Revisão concluída: solicitacaoPlanoId={}, etapa=REVIEW, tentativa={}, aprovado={}, erros={}, avisos={}, duracaoMs={}",
-                    context.identificadorTecnico(), tentativa,
-                    revisao.valid(), revisao.errors().size(), revisao.warnings().size(),
-                    tempoMs(inicioEtapa));
+            String statusRevisao = revisao.valid() ? "SUCCESS" : "REJECTED";
+            if (revisao.valid()) {
+                logger.info("solicitacaoPlanoId={} etapa=REVIEW status={} tentativa={} erros={} avisos={} duracaoMs={}",
+                        context.identificadorTecnico(), statusRevisao, tentativa,
+                        revisao.errors().size(), revisao.warnings().size(), tempoMs(inicioEtapa));
+            } else {
+                logger.warn("solicitacaoPlanoId={} etapa=REVIEW status={} tentativa={} erros={} avisos={} duracaoMs={}",
+                        context.identificadorTecnico(), statusRevisao, tentativa,
+                        revisao.errors().size(), revisao.warnings().size(), tempoMs(inicioEtapa));
+            }
             registrarApontamentos(
                     context.identificadorTecnico(), tentativa, "ERROR", revisao.errors());
             registrarApontamentos(
                     context.identificadorTecnico(), tentativa, "WARNING", revisao.warnings());
 
             if (validacao.isValid() && revisao.valid()) {
-                logger.info("Plano aprovado: solicitacaoPlanoId={}, correcoes={}",
-                        context.identificadorTecnico(), tentativa);
                 return new AgentExecutionResult(plano, tentativa, validacao, revisao);
             }
             if (tentativa == maxCorrectionAttempts) {
                 logger.warn(
-                        "Plano reprovado após limite: solicitacaoPlanoId={}, correcoes={}, errosJava={}, errosRevisao={}",
+                        "solicitacaoPlanoId={} etapa=PIPELINE status=REJECTED correcoes={} errosJava={} errosRevisao={}",
                         context.identificadorTecnico(), tentativa,
                         validacao.getErrors().size(), revisao.errors().size());
                 throw new PlanoTreinoReprovadoException(
@@ -101,11 +104,11 @@ public class TrainingPlanAgent {
 
             MDC.put("etapa", "CORRECTION");
             inicioEtapa = System.nanoTime();
-            logger.info("Correção iniciada: solicitacaoPlanoId={}, etapa=CORRECTION, tentativa={}/{}, errosJava={}, errosReviewer={}",
+            logger.info("solicitacaoPlanoId={} etapa=CORRECTION status=STARTED tentativa={}/{} errosJava={} errosReviewer={}",
                     context.identificadorTecnico(), tentativa + 1, maxCorrectionAttempts,
                     validacao.getErrors().size(), revisao.errors().size());
             plano = generator.correct(plano, context, validacao, revisao);
-            logger.info("Correção concluída: solicitacaoPlanoId={}, etapa=CORRECTION, tentativa={}/{}, duracaoMs={}",
+            logger.info("solicitacaoPlanoId={} etapa=CORRECTION status=SUCCESS tentativa={}/{} duracaoMs={}",
                     context.identificadorTecnico(), tentativa + 1, maxCorrectionAttempts,
                     tempoMs(inicioEtapa));
         }
@@ -123,13 +126,13 @@ public class TrainingPlanAgent {
         int quantidadeLogada = Math.min(erros.size(), MAX_APONTAMENTOS_LOG);
         for (int indice = 0; indice < quantidadeLogada; indice++) {
             logger.warn(
-                    "Validação reprovada: solicitacaoPlanoId={}, etapa=VALIDATION, tentativa={}, indice={}, motivo={}",
+                    "solicitacaoPlanoId={} etapa=VALIDATION status=DETAIL tentativa={} indice={} motivo={}",
                     solicitacaoPlanoId, tentativa, indice + 1,
                     sanitizarApontamento(erros.get(indice)));
         }
         if (erros.size() > quantidadeLogada) {
             logger.warn(
-                    "Erros de validação omitidos: solicitacaoPlanoId={}, tentativa={}, omitidos={}",
+                    "solicitacaoPlanoId={} etapa=VALIDATION status=DETAIL_OMITTED tentativa={} omitidos={}",
                     solicitacaoPlanoId, tentativa, erros.size() - quantidadeLogada);
         }
     }
@@ -148,7 +151,7 @@ public class TrainingPlanAgent {
         int quantidadeLogada = Math.min(apontamentos.size(), MAX_APONTAMENTOS_LOG);
         for (int indice = 0; indice < quantidadeLogada; indice++) {
             logger.warn(
-                    "TrainingPlan reviewer apontamento: solicitacaoPlanoId={}, tentativa={}, severidade={}, indice={}, mensagem={}",
+                    "solicitacaoPlanoId={} etapa=REVIEW status=DETAIL tentativa={} severidade={} indice={} mensagem={}",
                     identificadorTecnico,
                     tentativa,
                     severidade,
@@ -158,7 +161,7 @@ public class TrainingPlanAgent {
         int omitidos = apontamentos.size() - quantidadeLogada;
         if (omitidos > 0) {
             logger.warn(
-                    "TrainingPlan reviewer apontamentos omitidos: solicitacaoPlanoId={}, tentativa={}, severidade={}, omitidos={}",
+                    "solicitacaoPlanoId={} etapa=REVIEW status=DETAIL_OMITTED tentativa={} severidade={} omitidos={}",
                     identificadorTecnico, tentativa, severidade, omitidos);
         }
     }
