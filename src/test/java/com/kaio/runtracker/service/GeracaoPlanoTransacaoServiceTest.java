@@ -12,6 +12,10 @@ import com.kaio.runtracker.dto.PlanoTreinoIAResponseDTO;
 import com.kaio.runtracker.repository.PagamentoRepository;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -89,6 +93,66 @@ class GeracaoPlanoTransacaoServiceTest {
         assertTrue(reserva.isPresent());
         assertEquals(GeracaoPlanoStatus.PROCESSING, pagamento.getGeracaoStatus());
         assertEquals(SolicitacaoPlanoStatus.PROCESSING, pagamento.getSolicitacaoPlano().getStatus());
+    }
+
+    @Test
+    void pendingPodeReservar() throws Exception {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-08T15:00:00Z"), ZoneOffset.UTC);
+        PagamentoRepository repository = mock(PagamentoRepository.class);
+        ObjectMapper objectMapper = new ObjectMapper();
+        GeracaoPlanoTransacaoService service = new GeracaoPlanoTransacaoService(
+                repository, mock(TrainingPlanService.class), objectMapper, clock, 30);
+        Pagamento pagamento = pagamentoAprovadoComSolicitacao();
+        pagamento.setGeracaoStatus(GeracaoPlanoStatus.PENDING);
+        pagamento.getSolicitacaoPlano().setDadosFormularioJson(
+                objectMapper.writeValueAsString(new GerarPlanoTreinoRequestDTO()));
+        when(repository.findByIdForUpdate(1L)).thenReturn(Optional.of(pagamento));
+
+        assertTrue(service.reservar(1L).isPresent());
+    }
+
+    @Test
+    void processingRecenteNaoPodeReservarNovamente() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-08T15:00:00Z"), ZoneOffset.UTC);
+        PagamentoRepository repository = mock(PagamentoRepository.class);
+        GeracaoPlanoTransacaoService service = new GeracaoPlanoTransacaoService(
+                repository, mock(TrainingPlanService.class), new ObjectMapper(), clock, 30);
+        Pagamento pagamento = pagamentoAprovadoComSolicitacao();
+        pagamento.setGeracaoStatus(GeracaoPlanoStatus.PROCESSING);
+        pagamento.setAtualizadoEm(LocalDateTime.of(2026, 9, 8, 14, 45));
+        when(repository.findByIdForUpdate(1L)).thenReturn(Optional.of(pagamento));
+
+        assertTrue(service.reservar(1L).isEmpty());
+    }
+
+    @Test
+    void processingStalePodeSerRetomado() throws Exception {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-08T15:00:00Z"), ZoneOffset.UTC);
+        PagamentoRepository repository = mock(PagamentoRepository.class);
+        ObjectMapper objectMapper = new ObjectMapper();
+        GeracaoPlanoTransacaoService service = new GeracaoPlanoTransacaoService(
+                repository, mock(TrainingPlanService.class), objectMapper, clock, 30);
+        Pagamento pagamento = pagamentoAprovadoComSolicitacao();
+        pagamento.setGeracaoStatus(GeracaoPlanoStatus.PROCESSING);
+        pagamento.setAtualizadoEm(LocalDateTime.of(2026, 9, 8, 14, 29));
+        pagamento.getSolicitacaoPlano().setDadosFormularioJson(
+                objectMapper.writeValueAsString(new GerarPlanoTreinoRequestDTO()));
+        when(repository.findByIdForUpdate(1L)).thenReturn(Optional.of(pagamento));
+
+        assertTrue(service.reservar(1L).isPresent());
+        assertEquals(LocalDateTime.of(2026, 9, 8, 15, 0), pagamento.getAtualizadoEm());
+    }
+
+    @Test
+    void completedNaoPodeSerRetomado() {
+        PagamentoRepository repository = mock(PagamentoRepository.class);
+        GeracaoPlanoTransacaoService service = new GeracaoPlanoTransacaoService(
+                repository, mock(TrainingPlanService.class), new ObjectMapper());
+        Pagamento pagamento = pagamentoAprovadoComSolicitacao();
+        pagamento.setGeracaoStatus(GeracaoPlanoStatus.COMPLETED);
+        when(repository.findByIdForUpdate(1L)).thenReturn(Optional.of(pagamento));
+
+        assertTrue(service.reservar(1L).isEmpty());
     }
 
     @Test

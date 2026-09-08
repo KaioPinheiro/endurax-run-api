@@ -472,7 +472,7 @@ class PagamentoServiceTest {
     }
 
     @Test
-    void webhookNaoRepeteGeracaoQuandoJaEstaProcessando() {
+    void webhookEncaminhaProcessingParaReservaValidarTimeout() {
         Pagamento pagamento = pagamentoPendente();
         pagamento.setStatus(PagamentoStatus.APPROVED);
         pagamento.setStatusDetail("accredited");
@@ -480,7 +480,7 @@ class PagamentoServiceTest {
         when(client.consultarOrder("ORD123")).thenReturn(orderAprovada());
         when(repository.findByExternalReference("EXT123")).thenReturn(Optional.of(pagamento));
 
-        assertNull(service.processarWebhookOrder("ORD123"));
+        assertEquals(1L, service.processarWebhookOrder("ORD123"));
         verify(repository, never()).save(any());
     }
 
@@ -499,13 +499,13 @@ class PagamentoServiceTest {
     }
 
     @Test
-    void reconciliacaoNaoSinalizaGeracaoQuandoJaFoiIniciada() {
+    void processamentoEhEncaminhadoParaReservaDecidirSeEstaStale() {
         Pagamento pagamento = pagamentoPendente();
         pagamento.setStatus(PagamentoStatus.APPROVED);
         pagamento.setGeracaoStatus(GeracaoPlanoStatus.PROCESSING);
         when(repository.findById(1L)).thenReturn(Optional.of(pagamento));
 
-        assertNull(service.pagamentoPendenteDeGeracao(1L));
+        assertEquals(1L, service.pagamentoPendenteDeGeracao(1L));
     }
 
     @Test

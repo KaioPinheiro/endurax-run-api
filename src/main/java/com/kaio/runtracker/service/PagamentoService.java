@@ -265,10 +265,9 @@ public class PagamentoService {
     }
 
     /**
-     * Devolve o id do pagamento quando a geração precisa ser garantida: pagamento aprovado
-     * cuja geração nunca saiu de PENDING. Webhook e reconciliação usam o mesmo critério, e a
-     * reserva com lock pessimista em GeracaoPlanoTransacaoService continua sendo a trava final
-     * contra geração duplicada.
+     * Encaminha PENDING e PROCESSING para a reserva. Sob lock pessimista, a reserva distingue
+     * processamento recente de processamento abandonado e continua sendo a trava final contra
+     * geração duplicada.
      */
     public Long pagamentoPendenteDeGeracao(Long pagamentoId) {
         return repository.findById(pagamentoId)
@@ -281,10 +280,11 @@ public class PagamentoService {
     }
 
     private Long idParaGarantirGeracao(Pagamento pagamento) {
-        boolean geracaoNuncaIniciada = pagamento.getStatus() == PagamentoStatus.APPROVED
-                && pagamento.getGeracaoStatus() == GeracaoPlanoStatus.PENDING
+        boolean geracaoPodePrecisarDeGarantia = pagamento.getStatus() == PagamentoStatus.APPROVED
+                && (pagamento.getGeracaoStatus() == GeracaoPlanoStatus.PENDING
+                    || pagamento.getGeracaoStatus() == GeracaoPlanoStatus.PROCESSING)
                 && pagamento.getTrainingPlan() == null;
-        return geracaoNuncaIniciada ? pagamento.getId() : null;
+        return geracaoPodePrecisarDeGarantia ? pagamento.getId() : null;
     }
 
     public PagamentoResultadoResponseDTO consultarResultado(Long pagamentoId) {
