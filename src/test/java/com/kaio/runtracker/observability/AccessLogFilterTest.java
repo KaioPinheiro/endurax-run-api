@@ -14,15 +14,11 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
-import com.kaio.runtracker.entity.User;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -39,18 +35,17 @@ class AccessLogFilterTest {
         appender = new ListAppender<>();
         appender.start();
         logger.addAppender(appender);
-        logger.setLevel(Level.INFO);
+        logger.setLevel(Level.DEBUG);
     }
 
     @AfterEach
     void limpar() {
         logger.detachAppender(appender);
         MDC.clear();
-        SecurityContextHolder.clearContext();
     }
 
     @Test
-    void geraRequestIdCapturaStatusIpELimpaMdc() throws Exception {
+    void geraRequestIdCapturaStatusComNivelWarnELimpaMdc() throws Exception {
         MockHttpServletRequest request = requisicao();
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -58,8 +53,24 @@ class AccessLogFilterTest {
 
         assertThat(response.getHeader(AccessLogFilter.REQUEST_ID_HEADER))
                 .matches("[0-9a-f-]{36}");
-        assertThat(log()).contains("status=404", "ip=203.0.113.10", "method=GET", "uri=/api/teste");
+        assertThat(ultimoLog().getLevel()).isEqualTo(Level.WARN);
+        assertThat(log()).contains("status=404", "method=GET", "uri=/api/teste")
+                .doesNotContain("ip=", "userAgent=", "timestamp=", "userId=");
         assertThat(MDC.get(AccessLogFilter.MDC_REQUEST_ID)).isNull();
+    }
+
+    @Test
+    void sucessoGeraSomenteDebug() throws Exception {
+        executar(requisicao(), new MockHttpServletResponse(), 200);
+
+        assertThat(ultimoLog().getLevel()).isEqualTo(Level.DEBUG);
+    }
+
+    @Test
+    void erroDoServidorGeraError() throws Exception {
+        executar(requisicao(), new MockHttpServletResponse(), 500);
+
+        assertThat(ultimoLog().getLevel()).isEqualTo(Level.ERROR);
     }
 
     @Test
@@ -96,17 +107,16 @@ class AccessLogFilterTest {
         executar(request, new MockHttpServletResponse(), 200);
 
         assertThat(log())
-                .doesNotContain("jwt-secreto", "segredo", "sk-12345678901234567890")
-                .contains("[REDACTED]");
+                .doesNotContain("jwt-secreto", "segredo", "sk-12345678901234567890");
     }
 
     @Test
-    void ignoraXForwardedForNaoConfiavel() throws Exception {
+    void naoRegistraIpNemXForwardedFor() throws Exception {
         MockHttpServletRequest request = requisicao();
         request.addHeader("X-Forwarded-For", "198.51.100.99");
         executar(request, new MockHttpServletResponse(), 200);
 
-        assertThat(log()).contains("ip=203.0.113.10").doesNotContain("198.51.100.99");
+        assertThat(log()).doesNotContain("ip=", "203.0.113.10", "198.51.100.99");
     }
 
     @Test
@@ -124,19 +134,6 @@ class AccessLogFilterTest {
         assertThat(properties.getProperty("server.tomcat.remoteip.protocol-header"))
                 .isEqualTo("x-forwarded-proto");
         assertThat(properties).doesNotContainKey("server.tomcat.remoteip.internal-proxies");
-    }
-
-    @Test
-    void registraSomenteIdDoUsuarioAutenticado() throws Exception {
-        User user = new User();
-        user.setId(42L);
-        user.setEmail("nao-logar@example.com");
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(user, null, List.of()));
-
-        executar(requisicao(), new MockHttpServletResponse(), 200);
-
-        assertThat(log()).contains("userId=42").doesNotContain("nao-logar@example.com");
     }
 
     @Test
@@ -190,6 +187,10 @@ class AccessLogFilterTest {
     }
 
     private String log() {
-        return appender.list.get(appender.list.size() - 1).getFormattedMessage();
+        return ultimoLog().getFormattedMessage();
+    }
+
+    private ILoggingEvent ultimoLog() {
+        return appender.list.get(appender.list.size() - 1);
     }
 }

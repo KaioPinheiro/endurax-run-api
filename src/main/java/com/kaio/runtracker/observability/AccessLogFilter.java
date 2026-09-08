@@ -1,6 +1,5 @@
 package com.kaio.runtracker.observability;
 
-import com.kaio.runtracker.entity.User;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -10,13 +9,10 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -27,7 +23,6 @@ public class AccessLogFilter extends OncePerRequestFilter {
     public static final String REQUEST_ID_HEADER = "X-Request-ID";
     static final String MDC_REQUEST_ID = "requestId";
     private static final int MAX_REQUEST_ID_LENGTH = 64;
-    private static final int MAX_USER_AGENT_LENGTH = 256;
     private static final Pattern SAFE_REQUEST_ID =
             Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0," + (MAX_REQUEST_ID_LENGTH - 1) + "}");
     private static final Pattern SECRET_LIKE = Pattern.compile(
@@ -52,15 +47,29 @@ public class AccessLogFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
         } finally {
             try {
-                logger.info(
-                        "access timestamp={} requestId={} method={} uri={} status={} durationMs={} ip={} userAgent={} userId={}",
-                        Instant.now(), requestId, request.getMethod(),
-                        textoSeguro(sanitizarUri(request.getRequestURI()), 1024), response.getStatus(),
-                        (System.nanoTime() - inicio) / 1_000_000, request.getRemoteAddr(),
-                        textoSeguro(request.getHeader("User-Agent"), MAX_USER_AGENT_LENGTH), userId());
+                registrarAcesso(requestId, request, response, inicio);
             } finally {
                 MDC.remove(MDC_REQUEST_ID);
             }
+        }
+    }
+
+    private void registrarAcesso(
+            String requestId,
+            HttpServletRequest request,
+            HttpServletResponse response,
+            long inicio) {
+        String uri = textoSeguro(sanitizarUri(request.getRequestURI()), 1024);
+        long duracaoMs = (System.nanoTime() - inicio) / 1_000_000;
+        int status = response.getStatus();
+        String formato = "access requestId={} method={} uri={} status={} duracaoMs={}";
+
+        if (status >= 500) {
+            logger.error(formato, requestId, request.getMethod(), uri, status, duracaoMs);
+        } else if (status >= 400) {
+            logger.warn(formato, requestId, request.getMethod(), uri, status, duracaoMs);
+        } else {
+            logger.debug(formato, requestId, request.getMethod(), uri, status, duracaoMs);
         }
     }
 
@@ -70,14 +79,6 @@ public class AccessLogFilter extends OncePerRequestFilter {
                 && !SECRET_LIKE.matcher(recebido).find()
                 ? recebido
                 : UUID.randomUUID().toString();
-    }
-
-    private String userId() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) return "-";
-        return authentication.getPrincipal() instanceof User user && user.getId() != null
-                ? user.getId().toString()
-                : "-";
     }
 
     private String textoSeguro(String valor, int tamanhoMaximo) {
