@@ -24,6 +24,24 @@ class GerarPlanoTreinoRequestDTOTest {
     }
 
     @Test
+    void meiaMaratonaAceitaTemposComHoraEExigeMelhoraEstrita() {
+        GerarPlanoTreinoRequestDTO request = new GerarPlanoTreinoRequestDTO();
+        request.setObjetivo("Melhorar tempo na Meia Maratona");
+        request.setTempoAtual("1:33:00");
+        request.setTempoDesejado("1:30:00");
+        assertTrue(request.isTemposPerformanceValidos());
+
+        request.setTempoDesejado("1:33:00");
+        assertFalse(request.isTemposPerformanceValidos());
+
+        request.setTempoDesejado("1:34:00");
+        assertFalse(request.isTemposPerformanceValidos());
+
+        request.setTempoDesejado("1:75:00");
+        assertFalse(request.isTemposPerformanceValidos());
+    }
+
+    @Test
     void objetivosRemovidosNaoSaoAceitosEmNovasSolicitacoes() {
         GerarPlanoTreinoRequestDTO request = new GerarPlanoTreinoRequestDTO();
         request.setObjetivo("Outro");

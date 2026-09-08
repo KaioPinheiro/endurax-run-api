@@ -122,14 +122,15 @@ public class GerarPlanoTreinoRequestDTO {
     private Long tempoEmSegundos(String tempo) {
         if (!temTexto(tempo)) return null;
         String[] partes = tempo.trim().split(":");
-        boolean maratona = objetivo.endsWith("na Maratona");
-        if (partes.length != (maratona ? 3 : 2)) return null;
+        if (partes.length != 2 && partes.length != 3) return null;
         try {
-            long primeiro = Long.parseLong(partes[0]);
+            long horas = partes.length == 3 ? Long.parseLong(partes[0]) : 0;
             long minutos = Long.parseLong(partes[partes.length - 2]);
             long segundos = Long.parseLong(partes[partes.length - 1]);
-            if (primeiro <= 0 || segundos > 59 || (maratona && minutos > 59)) return null;
-            return maratona ? primeiro * 3600 + minutos * 60 + segundos : primeiro * 60 + segundos;
+            if (horas < 0 || minutos < 0 || segundos < 0 || segundos > 59
+                    || (partes.length == 3 && minutos > 59)) return null;
+            long total = horas * 3600 + minutos * 60 + segundos;
+            return total > 0 ? total : null;
         } catch (NumberFormatException ex) {
             return null;
         }
