@@ -182,11 +182,15 @@ class PagamentoServiceTest {
     void recriarPixDaMesmaSolicitacaoEEmailRetornaMesmoTokenSemNovaCobranca() {
         Pagamento pagamento = pagamentoPendente();
         pagamento.setEmailPagador("cliente@email.com");
+        SolicitacaoPlano solicitacao = new SolicitacaoPlano();
+        solicitacao.setCodigoAtendimento("END-7K4P9X");
+        pagamento.setSolicitacaoPlano(solicitacao);
         when(repository.findBySolicitacaoPlanoId(7L)).thenReturn(Optional.of(pagamento));
 
         CriarPagamentoPixResponseDTO response = service.criarPix("cliente@email.com", 7L);
 
         assertEquals("EXT123", response.acessoToken());
+        assertEquals("END-7K4P9X", response.codigoAtendimento());
         verify(client, never()).criarOrderPix(any(), any(), any(), any());
     }
 
@@ -574,6 +578,9 @@ class PagamentoServiceTest {
     @Test
     void consultaResultadoPendente() {
         Pagamento pagamento = pagamentoPendente();
+        SolicitacaoPlano solicitacao = new SolicitacaoPlano();
+        solicitacao.setCodigoAtendimento("END-7K4P9X");
+        pagamento.setSolicitacaoPlano(solicitacao);
         pagamento.setGeracaoStatus(GeracaoPlanoStatus.PENDING);
         when(repository.findById(1L)).thenReturn(Optional.of(pagamento));
 
@@ -586,6 +593,7 @@ class PagamentoServiceTest {
         assertEquals(new BigDecimal("12.90"), resultado.valor());
         assertEquals("QR-CODE", resultado.pixCopiaCola());
         assertEquals("BASE64", resultado.qrCodeBase64());
+        assertEquals("END-7K4P9X", resultado.codigoAtendimento());
         assertEquals(OffsetDateTime.of(2026, 7, 20, 13, 0, 0, 0,
                 ZoneOffset.ofHours(-3)), resultado.dataExpiracao());
     }

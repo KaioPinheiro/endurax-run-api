@@ -93,15 +93,21 @@ public class GeracaoPlanoTransacaoService {
             pagamento.setAtualizadoEm(LocalDateTime.now(clock));
             pagamento.getSolicitacaoPlano().setStatus(SolicitacaoPlanoStatus.PROCESSING);
             pagamentoRepository.save(pagamento);
+            logger.info(
+                    "codigoAtendimento={} solicitacaoPlanoId={} pagamentoId={} etapa=RESERVATION status=SUCCESS",
+                    pagamento.getSolicitacaoPlano().getCodigoAtendimento(),
+                    pagamento.getSolicitacaoPlano().getId(), pagamentoId);
             return Optional.of(new GeracaoContexto(
-                    pagamentoId, pagamento.getSolicitacaoPlano().getId(), formulario));
+                    pagamentoId, pagamento.getSolicitacaoPlano().getId(),
+                    pagamento.getSolicitacaoPlano().getCodigoAtendimento(), formulario));
         } catch (JsonProcessingException exception) {
             pagamento.setGeracaoStatus(GeracaoPlanoStatus.FAILED);
             pagamento.setGeracaoMensagem(MENSAGEM_FALHA);
             pagamento.getSolicitacaoPlano().setStatus(SolicitacaoPlanoStatus.FAILED);
             pagamentoRepository.save(pagamento);
             logger.error(
-                    "solicitacaoPlanoId={} etapa=RESERVATION status=FAILED motivo=formulario_invalido",
+                    "codigoAtendimento={} solicitacaoPlanoId={} etapa=RESERVATION status=FAILED motivo=formulario_invalido",
+                    pagamento.getSolicitacaoPlano().getCodigoAtendimento(),
                     pagamento.getSolicitacaoPlano().getId(), exception);
             return Optional.empty();
         }
@@ -152,6 +158,7 @@ public class GeracaoPlanoTransacaoService {
     public record GeracaoContexto(
             Long pagamentoId,
             Long solicitacaoPlanoId,
+            String codigoAtendimento,
             GerarPlanoTreinoRequestDTO formulario) {
     }
 }

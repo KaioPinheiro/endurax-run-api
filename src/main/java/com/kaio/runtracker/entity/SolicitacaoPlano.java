@@ -32,6 +32,9 @@ public class SolicitacaoPlano {
     @Column(name = "dados_formulario_json", nullable = false, columnDefinition = "LONGTEXT")
     private String dadosFormularioJson;
 
+    @Column(name = "codigo_atendimento", length = 10, unique = true)
+    private String codigoAtendimento;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private SolicitacaoPlanoStatus status;

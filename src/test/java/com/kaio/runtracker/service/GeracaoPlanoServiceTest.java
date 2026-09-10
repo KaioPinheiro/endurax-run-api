@@ -133,7 +133,7 @@ class GeracaoPlanoServiceTest {
 
     private GeracaoPlanoTransacaoService.GeracaoContexto contexto() {
         return new GeracaoPlanoTransacaoService.GeracaoContexto(
-                1L, 123L, new GerarPlanoTreinoRequestDTO());
+                1L, 123L, "END-7K4P9X", new GerarPlanoTreinoRequestDTO());
     }
 
     private void prepararAgente(

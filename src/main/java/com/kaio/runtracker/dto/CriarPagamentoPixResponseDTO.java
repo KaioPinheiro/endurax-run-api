@@ -13,5 +13,6 @@ public record CriarPagamentoPixResponseDTO(
         String pixCopiaCola,
         String qrCodeBase64,
         String ticketUrl,
-        OffsetDateTime dataExpiracao) {
+        OffsetDateTime dataExpiracao,
+        String codigoAtendimento) {
 }

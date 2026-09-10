@@ -62,7 +62,8 @@ class GeracaoPlanoTransacaoServiceTest {
         plano.setId(10L);
         GerarPlanoTreinoRequestDTO formulario = new GerarPlanoTreinoRequestDTO();
         PlanoTreinoIAResponseDTO resposta = new PlanoTreinoIAResponseDTO();
-        var contexto = new GeracaoPlanoTransacaoService.GeracaoContexto(1L, 123L, formulario);
+        var contexto = new GeracaoPlanoTransacaoService.GeracaoContexto(
+                1L, 123L, "END-7K4P9X", formulario);
         when(trainingPlanService.salvarPlanoGerado(formulario, resposta)).thenReturn(plano);
 
         Long planoId = service.concluir(contexto, resposta);

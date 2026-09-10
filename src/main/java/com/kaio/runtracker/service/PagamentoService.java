@@ -89,7 +89,8 @@ public class PagamentoService {
         OffsetDateTime expiracaoRequest = OffsetDateTime.now(clock)
                 .plusMinutes(properties.getExpiracaoPixMinutos());
 
-        logger.info("Criando cobrança Pix: valor={}", properties.getValorPlano());
+        logger.info("Criando cobrança Pix: codigoAtendimento={}, valor={}",
+                codigoAtendimento(solicitacao), properties.getValorPlano());
 
         MercadoPagoOrderResponse order = mercadoPagoClient.criarOrderPix(
                 emailNormalizado,
@@ -124,8 +125,9 @@ public class PagamentoService {
             solicitacao.setStatus(SolicitacaoPlanoStatus.PAYMENT_PENDING);
             solicitacaoPlanoRepository.save(solicitacao);
         }
-        logger.info("Cobrança Pix criada: pagamentoId={}, orderId={}, status={}, expiraEm={}",
-                salvo.getId(), salvo.getOrderExternalId(), salvo.getStatus(), salvo.getDataExpiracao());
+        logger.info("Cobrança Pix criada: codigoAtendimento={}, pagamentoId={}, orderId={}, status={}, expiraEm={}",
+                codigoAtendimento(salvo), salvo.getId(), salvo.getOrderExternalId(), salvo.getStatus(),
+                salvo.getDataExpiracao());
         return respostaCriacao(salvo);
     }
 
@@ -192,8 +194,9 @@ public class PagamentoService {
         }
         if (novoStatus == PagamentoStatus.APPROVED) restaurarSolicitacaoAprovada(pagamento);
         Pagamento atualizado = repository.save(pagamento);
-        logger.info("Status Pix atualizado: pagamentoId={}, orderId={}, status={}, statusDetail={}",
-                atualizado.getId(), atualizado.getOrderExternalId(), atualizado.getStatus(), atualizado.getStatusDetail());
+        logger.info("Status Pix atualizado: codigoAtendimento={}, pagamentoId={}, orderId={}, status={}, statusDetail={}",
+                codigoAtendimento(atualizado), atualizado.getId(), atualizado.getOrderExternalId(),
+                atualizado.getStatus(), atualizado.getStatusDetail());
         return respostaStatus(atualizado);
     }
 
@@ -218,8 +221,8 @@ public class PagamentoService {
             logger.warn("Webhook Mercado Pago: pagamento não encontrado, orderId={}", order.id());
             return null;
         }
-        logger.info("Webhook Mercado Pago: pagamento localizado, pagamentoId={}, orderId={}",
-                pagamento.getId(), order.id());
+        logger.info("Webhook Mercado Pago: pagamento localizado, codigoAtendimento={}, pagamentoId={}, orderId={}",
+                codigoAtendimento(pagamento), pagamento.getId(), order.id());
 
         if (pagamento.getStatus() == PagamentoStatus.APPROVED) {
             Long garantirGeracao = idParaGarantirGeracao(pagamento);
@@ -255,8 +258,8 @@ public class PagamentoService {
         if (novoStatus == PagamentoStatus.APPROVED) restaurarSolicitacaoAprovada(pagamento);
         pagamento.setAtualizadoEm(LocalDateTime.now(clock));
         repository.save(pagamento);
-        logger.info("Webhook Mercado Pago: status atualizado, pagamentoId={}, orderId={}, statusAnterior={}, novoStatus={}",
-                pagamento.getId(), order.id(), statusAnterior, novoStatus);
+        logger.info("Webhook Mercado Pago: status atualizado, codigoAtendimento={}, pagamentoId={}, orderId={}, statusAnterior={}, novoStatus={}",
+                codigoAtendimento(pagamento), pagamento.getId(), order.id(), statusAnterior, novoStatus);
         Long garantirGeracao = idParaGarantirGeracao(pagamento);
         if (garantirGeracao != null) {
             logger.info("Pagamento aprovado; geração automática liberada: pagamentoId={}", pagamento.getId());
@@ -315,7 +318,8 @@ public class PagamentoService {
         return new PagamentoResultadoResponseDTO(
                 pagamento.getId(), pagamento.getStatus(), pagamento.getGeracaoStatus(), planoToken, mensagem,
                 pagamento.getValor(), pagamento.getPixCopiaCola(), pagamento.getQrCodeBase64(),
-                pagamento.getTicketUrl(), dataExpiracaoComOffset(pagamento.getDataExpiracao()));
+                pagamento.getTicketUrl(), dataExpiracaoComOffset(pagamento.getDataExpiracao()),
+                codigoAtendimento(pagamento));
     }
 
     private SolicitacaoPlano buscarSolicitacao(Long solicitacaoPlanoId, String emailNormalizado) {
@@ -416,7 +420,15 @@ public class PagamentoService {
     private CriarPagamentoPixResponseDTO respostaCriacao(Pagamento p) {
         return new CriarPagamentoPixResponseDTO(p.getId(), p.getExternalReference(), p.getStatus(), p.getValor(),
                 p.getPixCopiaCola(), p.getQrCodeBase64(), p.getTicketUrl(),
-                dataExpiracaoComOffset(p.getDataExpiracao()));
+                dataExpiracaoComOffset(p.getDataExpiracao()), codigoAtendimento(p));
+    }
+
+    private String codigoAtendimento(Pagamento pagamento) {
+        return pagamento == null ? null : codigoAtendimento(pagamento.getSolicitacaoPlano());
+    }
+
+    private String codigoAtendimento(SolicitacaoPlano solicitacao) {
+        return solicitacao == null ? null : solicitacao.getCodigoAtendimento();
     }
 
     private OffsetDateTime dataExpiracaoComOffset(LocalDateTime dataExpiracao) {

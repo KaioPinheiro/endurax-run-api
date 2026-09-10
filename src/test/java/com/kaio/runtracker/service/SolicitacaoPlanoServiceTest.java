@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -32,9 +33,11 @@ class SolicitacaoPlanoServiceTest {
         GerarPlanoTreinoRequestDTO formulario = new GerarPlanoTreinoRequestDTO();
         formulario.setObjetivo("Primeira meia maratona");
         formulario.setDuracaoSemanas(4);
+        AtomicReference<SolicitacaoPlano> persistida = new AtomicReference<>();
         when(repository.save(any(SolicitacaoPlano.class))).thenAnswer(invocation -> {
             SolicitacaoPlano solicitacao = invocation.getArgument(0);
             solicitacao.setId(7L);
+            persistida.set(solicitacao);
             return solicitacao;
         });
 
@@ -44,6 +47,8 @@ class SolicitacaoPlanoServiceTest {
         assertEquals(7L, response.solicitacaoPlanoId());
         assertEquals(SolicitacaoPlanoStatus.PENDING, response.status());
         assertTrue(formulario.getObjetivo().equals("Primeira meia maratona"));
+        assertTrue(persistida.get().getCodigoAtendimento().matches("END-[A-HJ-NP-Z2-9]{6}"));
+        verify(repository).existsByCodigoAtendimento(persistida.get().getCodigoAtendimento());
     }
 
     @Test
