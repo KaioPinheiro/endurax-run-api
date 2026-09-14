@@ -178,6 +178,18 @@ class PlanoTreinoRegrasDeterministicasValidatorTest {
         }
     }
 
+    @Test
+    void primeiraMaratonaAceitaNovaFaixaDeSessentaAOitentaKm() {
+        GerarPlanoTreinoRequestDTO request = requestV1(
+                "Primeira Maratona", "1 a 3 anos");
+        request.setDistanciaAlvo("42 km");
+        request.setVolumeSemanalAtual("60-80 km");
+        request.setDiasDisponiveis(List.of(
+                "segunda-feira", "terÃ§a-feira", "quinta-feira", "domingo"));
+
+        assertDoesNotThrow(() -> validator.prepararNovaSolicitacaoPublicaV1(request));
+    }
+
     private GerarPlanoTreinoRequestDTO requestV1(String objetivo, String experiencia) {
         GerarPlanoTreinoRequestDTO request = requestProva(LocalDate.of(2026, 8, 3));
         request.setObjetivo(objetivo);
