@@ -14,11 +14,26 @@ class PromptObjetivoFactoryTest {
     @Test
     void objetivosGeraisUsamPromptBase() {
         for (String objetivo : new String[]{
-                "Melhorar condicionamento", "Emagrecer", "Primeiros 5 km"}) {
+                "Melhorar condicionamento", "Primeiros 5 km"}) {
             assertEquals(
                     factory.criarPromptBase(),
                     factory.criarPrompt(request(objetivo, "5 km")));
         }
+    }
+
+    @Test
+    void emagrecerRecebeOrientacaoEspecificaEBaseSemAfetarOutrosObjetivos() {
+        String prompt = factory.criarPrompt(request("Emagrecer", "Sem distância alvo definida"));
+
+        assertTrue(prompt.contains("ciclo de corrida sustentavel"));
+        assertTrue(prompt.contains("regularidade"));
+        assertTrue(prompt.contains("intensidade confortavel"));
+        assertTrue(prompt.contains("capacidade atual do atleta"));
+        assertTrue(prompt.contains("Nao aumente volume ou intensidade apenas para elevar gasto energetico"));
+        assertTrue(prompt.contains("Nao prescreva dieta, calorias ou deficit calorico"));
+        assertTrue(prompt.contains("nao prometa perda de peso"));
+        assertTrue(prompt.contains(factory.criarPromptBase().strip()));
+        assertFalse(prompt.contains("viabilidade obrigatoria para maratona"));
     }
 
     @Test

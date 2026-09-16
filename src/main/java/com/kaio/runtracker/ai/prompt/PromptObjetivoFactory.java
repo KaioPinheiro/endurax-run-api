@@ -15,6 +15,9 @@ public class PromptObjetivoFactory {
         String objetivo = normalizar(request.getObjetivo());
         String distancia = normalizar(request.getDistanciaAlvo());
 
+        if ("emagrecer".equals(objetivo)) {
+            return criarPromptEmagrecer();
+        }
         if (ehMaratona(objetivo, distancia)) {
             return criarPromptPrimeiraMaratona();
         }
@@ -33,6 +36,16 @@ public class PromptObjetivoFactory {
     public String criarPrompt10Km() {
         return """
                 - Em objetivos de 10 km, use a faixa completa e um valor representativo coerente com experiencia e ritmo do atleta.
+                %s
+                """.formatted(criarPromptBase().strip());
+    }
+
+    public String criarPromptEmagrecer() {
+        return """
+                - Para o objetivo Emagrecer, priorize um ciclo de corrida sustentavel, com regularidade,
+                  predominancia de intensidade confortavel e progressao compativel com a capacidade atual do atleta.
+                - Nao aumente volume ou intensidade apenas para elevar gasto energetico.
+                - Nao prescreva dieta, calorias ou deficit calorico e nao prometa perda de peso.
                 %s
                 """.formatted(criarPromptBase().strip());
     }
