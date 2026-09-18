@@ -71,6 +71,7 @@ public class PlanoTreinoCorrectionPromptBuilder {
                   o treino em leve; NÃO remova o dia de corrida.
                 - Use no máximo um intervalado e dois treinos intensos por semana.
                 - Não coloque treinos intensos em dias consecutivos.
+                - Quando houver alternativa compatível entre os dias selecionados, evite posicionar treino intenso imediatamente antes do longão; isso não proíbe dias consecutivos nem treino leve ou moderado antes dele. Preserve o dia do longão escolhido.
                 - Inclua treino leve ou regenerativo quando necessário.
                 %s
                 - Respeite o volume atual e a progressão; reduza antes da prova somente quando ela estiver dentro deste ciclo.
@@ -103,7 +104,7 @@ public class PlanoTreinoCorrectionPromptBuilder {
 
                 Contexto: objetivo=%s; corre5KmDireto=%s; tempo5Km=%s;
                 maiorDistancia=%s; experiência=%s; volume=%s; distância=%s;
-                tempoDesejado=%s; paceAlvoMeta=%s; ritmoConfortavelAtual=%s;
+                tempoAtual=%s; tempoDesejado=%s; paceAlvoMeta=%s; ritmoConfortavelAtual=%s;
                 possuiProva=%s; dataProva=%s; possuiLesão=%s.
 
                 O paceAlvoMeta e o pace matematico da meta. Diferencie-o do ritmo
@@ -133,6 +134,7 @@ public class PlanoTreinoCorrectionPromptBuilder {
                 valor(request.getExperienciaCorrida()),
                 valor(request.getVolumeSemanalAtual()),
                 valor(request.getDistanciaAlvo()),
+                valor(request.getTempoAtual()),
                 valor(request.getTempoDesejado()),
                 PaceAlvoCalculator.calcular(request).orElse("Nao se aplica"),
                 valor(request.getRitmoConfortavel()),

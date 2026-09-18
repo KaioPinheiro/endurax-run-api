@@ -16,6 +16,30 @@ class PlanoTreinoPromptBuilderTest {
             new PlanoTreinoPromptBuilder(new PromptObjetivoFactory());
 
     @Test
+    void ancoraCargaInicialDistinguePaceEPreservaRecuperacaoENutricao() {
+        GerarPlanoTreinoRequestDTO request = new GerarPlanoTreinoRequestDTO();
+        request.setObjetivo("Primeiros 10 km");
+        request.setDistanciaAlvo("10 km");
+        request.setVolumeSemanalAtual("10-20 km");
+        request.setDiasDisponiveis(List.of("terça-feira", "quinta-feira", "sábado", "domingo"));
+        String prompt = promptBuilder.criarPrompt(request, 6);
+        assertTrue(prompt.contains("volumeSemanalAtual representa a carga habitual atual"));
+        assertTrue(prompt.contains("A PRIMEIRA semana"));
+        assertTrue(prompt.contains("para DISTRIBUIR a carga semanal, nao para multiplica-la"));
+        assertTrue(prompt.contains("inclusive aquecimento e desaquecimento"));
+        assertTrue(prompt.contains("a progressao pode ultrapassar gradualmente a faixa atual"));
+        assertTrue(prompt.contains("nao e teto rigido para todo o plano"));
+        assertTrue(prompt.contains("Diferencie explicitamente tempo para completar a repeticao de pace"));
+        assertTrue(prompt.contains("o pace como ritmo em min/km"));
+        assertTrue(prompt.contains("use rotulos separados e claros"));
+        assertTrue(prompt.contains("Quando houver alternativa compativel entre os dias selecionados"));
+        assertTrue(prompt.contains("evite posicionar treino intenso imediatamente antes do longao"));
+        assertTrue(prompt.contains("nao proibe dias consecutivos nem treino leve ou moderado"));
+        assertTrue(promptBuilder.criarSystemPrompt().contains(
+                "Nao forneca orientacoes alimentares ou nutricionais."));
+    }
+
+    @Test
     void promptExigePlanoFactivelEAvisoQuandoPrazoForInsuficiente() {
         GerarPlanoTreinoRequestDTO request = new GerarPlanoTreinoRequestDTO();
         request.setObjetivo("Maratona em 3 horas");

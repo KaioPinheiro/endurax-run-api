@@ -19,6 +19,7 @@ class PlanoTreinoCorrectionPromptBuilderTest {
         GerarPlanoTreinoRequestDTO request = new GerarPlanoTreinoRequestDTO();
         request.setObjetivo("Melhorar tempo na Maratona");
         request.setDistanciaAlvo("42 km");
+        request.setTempoAtual("3:15:00");
         request.setTempoDesejado("3:00:00");
         request.setRitmoConfortavel("4:30-5:00 min/km");
         request.setDiasDisponiveis(List.of("terca-feira", "quinta-feira", "sabado", "domingo"));
@@ -30,6 +31,7 @@ class PlanoTreinoCorrectionPromptBuilderTest {
         assertTrue(prompt.contains("objetivo=Melhorar tempo na Maratona"));
         assertTrue(prompt.contains("distância=42 km"));
         assertTrue(prompt.contains("tempoDesejado=3:00:00"));
+        assertTrue(prompt.contains("tempoAtual=3:15:00"));
         assertTrue(prompt.contains("paceAlvoMeta=4:16 min/km"));
         assertTrue(prompt.contains("ritmoConfortavelAtual=4:30-5:00 min/km"));
         assertTrue(prompt.contains("Diferencie-o do ritmo"));
@@ -55,6 +57,11 @@ class PlanoTreinoCorrectionPromptBuilderTest {
                 "Não crie corrida em dia não selecionado e não duplique dias",
                 "exatamente a quantidade de treinos de corrida",
                 "o treino em leve; NÃO remova o dia de corrida");
+        assertThat(prompt).contains(
+                "Quando houver alternativa compatível entre os dias selecionados",
+                "evite posicionar treino intenso imediatamente antes do longão",
+                "não proíbe dias consecutivos nem treino leve ou moderado antes dele",
+                "Preserve o dia do longão escolhido");
     }
 
     @Test

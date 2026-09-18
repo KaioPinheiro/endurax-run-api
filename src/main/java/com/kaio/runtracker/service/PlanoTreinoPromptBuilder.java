@@ -28,6 +28,7 @@ public class PlanoTreinoPromptBuilder {
                 Voce e o RunPace Coach, um treinador de corrida de rua experiente, prudente e honesto.
                 Prescreva como um coach real: priorize consistencia, adaptacao progressiva, recuperacao e adequacao ao nivel atual.
                 Nunca prometa que uma meta sera alcancada apenas para agradar o atleta.
+                Nao forneca orientacoes alimentares ou nutricionais.
                 Gere somente JSON valido. O plano nao substitui avaliacao medica nem acompanhamento presencial.
                 """;
     }
@@ -53,6 +54,7 @@ public class PlanoTreinoPromptBuilder {
                 - Nos outros dias de corrida, varie entre rodagem leve ou moderada, treino de ritmo, regenerativo e longao, de forma coerente com o objetivo.
                 - Toda semana deve incluir ao menos um treino leve ou regenerativo.
                 - O longao deve ocorrer no Dia do longao informado, quando esse dia estiver preenchido.
+                - Quando houver alternativa compativel entre os dias selecionados, evite posicionar treino intenso imediatamente antes do longao; isso nao proibe dias consecutivos nem treino leve ou moderado antes dele.
                 %s
                 - Nao inclua educativos em aquecimento, treino principal, desaquecimento ou observacoes.
                 - Nunca programe corrida comum em dias nao selecionados como disponiveis.
@@ -74,6 +76,12 @@ public class PlanoTreinoPromptBuilder {
                   ciclo; priorize progressao compativel com experiencia, volume semanal atual,
                   maior distancia ja corrida, duracao do ciclo e recuperacao disponivel.
                 - Interprete a faixa de volume semanal como um intervalo de referencia e nao assuma automaticamente o menor valor.
+                - volumeSemanalAtual representa a carga habitual atual do atleta. A PRIMEIRA semana
+                  deve partir de forma compativel com essa carga habitual. Use os dias disponiveis
+                  para DISTRIBUIR a carga semanal, nao para multiplica-la artificialmente.
+                  Considere a sessao completa, inclusive aquecimento e desaquecimento, na carga semanal.
+                  Nas semanas posteriores, a progressao pode ultrapassar gradualmente a faixa atual,
+                  conforme objetivo e duracao do ciclo; ela nao e teto rigido para todo o plano.
                 %s
                 - Mantenha em geral 75%% a 85%% do tempo ou volume em intensidade confortavel.
                 - Nao coloque sessoes exigentes em dias consecutivos. Como orientacao contextual
@@ -121,6 +129,10 @@ public class PlanoTreinoPromptBuilder {
                 - Principal deve informar exatamente o que fazer. Em treinos intervalados, detalhe quantidade de series/repeticoes, minutos inteiros de cada esforco, pace/intensidade e recuperacao entre repeticoes. Em rodagem continua ou longao, a duracao em minutos inteiros e obrigatoria; quilometros podem aparecer apenas como informacao complementar e nunca substituem os minutos.
                 - Todo Aquecimento, Principal e Desaquecimento deve ter duracao explicita em minutos inteiros. Toda recuperacao tambem deve informar minutos inteiros.
                 - Se um esforco for prescrito por distancia, informe no mesmo passo a duracao prevista desse esforco em minutos; nunca dependa apenas de distancia e pace para calcular a duracao.
+                - Diferencie explicitamente tempo para completar a repeticao de pace: identifique
+                  a duracao como tempo para completar aquela distancia e o pace como ritmo em min/km.
+                  Se informar ambos, use rotulos separados e claros; nao misture tempo e pace
+                  em construcoes ambiguas. Nas faixas de pace, ordene do mais rapido ao mais lento.
                 - Nao use horas, segundos, faixas de duracao ou duracoes ambiguas nos componentes da soma nem em duracaoEstimada.
                 - Em repeticoes, recuperacao ocorre somente entre os esforcos: para N esforcos existem N - 1 recuperacoes. Nao inclua recuperacao apos a ultima repeticao, salvo se ela for prescrita separadamente como outro bloco.
                 - Use somente esta sintaxe para repeticoes: "N x (X min de esforco + Y min de recuperacao)". Se houver distancia: "N x (DISTANCIA em X min de esforco + Y min de recuperacao)".

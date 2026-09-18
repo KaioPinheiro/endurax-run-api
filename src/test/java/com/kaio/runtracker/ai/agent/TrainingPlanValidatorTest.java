@@ -17,6 +17,39 @@ class TrainingPlanValidatorTest {
     private final TrainingPlanValidator validator = new TrainingPlanValidator();
 
     @Test
+    void aceitaPacesOrdenadosSemAvaliarPlausibilidadeOuTempoDaRepeticao() {
+        for (String pace : List.of("4:30-4:40 min/km", "5:00-5:15 min/km",
+                "6:00-6:30 min/km", "5:00-5:00 min/km", "1:45-1:55 min/km")) {
+            PlanoTreinoIAResponseDTO plano = plano(4);
+            TreinoPlanoIAResponseDTO treino = plano.getSemanas().get(0).getTreinos().get(0);
+            treino.setPaceSugerido(pace);
+            treino.setDescricao("400 m em 1:45-1:50 min; 800 m em 3:45; "
+                    + "tempo 1:50-1:45 min; pace 4:30-4:40 min/km");
+            assertTrue(validar(plano, request(false, false, "10 km"), 4).isValid(), pace);
+        }
+    }
+
+    @Test
+    void rejeitaFaixaInvertidaExplicitaNoPaceENosTextosDoTreino() {
+        for (String faixa : List.of("5:50-5:40 min/km", "5:50–5:40 min/km",
+                "5:50—5:40 min/km", "5:50 a 5:40 min/km")) {
+            for (int campo = 0; campo < 4; campo++) {
+                PlanoTreinoIAResponseDTO plano = plano(4);
+                TreinoPlanoIAResponseDTO treino = plano.getSemanas().get(0).getTreinos().get(0);
+                switch (campo) {
+                    case 0 -> treino.setPaceSugerido(faixa);
+                    case 1 -> treino.setDescricao("Aquecimento: 10 min a " + faixa);
+                    case 2 -> treino.setTitulo("Corrida leve a " + faixa);
+                    case 3 -> treino.setObservacoes("Principal em ritmo " + faixa);
+                    default -> throw new AssertionError();
+                }
+                assertErro(validar(plano, request(false, false, "10 km"), 4),
+                        "faixa de pace invertida");
+            }
+        }
+    }
+
+    @Test
     void aprovaPlanoValido() {
         assertTrue(validar(plano(4), request(false, false, "10 km"), 4).isValid());
     }
@@ -199,16 +232,34 @@ class TrainingPlanValidatorTest {
     }
 
     @Test
-    void rejeitaAumentoDeLongaoAcimaDoMaiorEntreQuinzeMinutosEQuinzePorCento() {
+    void avisaAumentoDeLongaoAcimaDoMaiorEntreQuinzeMinutosEQuinzePorCento() {
         PlanoTreinoIAResponseDTO plano = plano(4);
         definirDuracaoLongao(plano, 0, "90 min");
         definirDuracaoLongao(plano, 1, "120 min");
 
         ValidationResult resultado = validar(plano, request(false, false, "10 km"), 4);
 
-        assertErro(resultado, "aumentou de 90 min na semana 1 para 120 min");
-        assertErro(resultado, "30 min (33.3%)");
-        assertErro(resultado, "no máximo aproximadamente 105 min");
+        assertTrue(resultado.isValid());
+        assertTrue(resultado.getErrors().isEmpty());
+        assertAviso(resultado, "aumentou de 90 min na semana 1 para 120 min");
+        assertAviso(resultado, "30 min (33.3%)");
+        assertAviso(resultado, "no máximo aproximadamente 105 min");
+    }
+
+    @Test
+    void aumentoDeOitentaParaCentoEDezMinutosSomenteAvisa() {
+        PlanoTreinoIAResponseDTO plano = plano(4);
+        definirDuracaoLongao(plano, 0, "80 min");
+        definirDuracaoLongao(plano, 1, "110 min");
+
+        ValidationResult resultado = validar(plano, request(false, false, "21 km"), 4);
+
+        assertTrue(resultado.isValid());
+        assertTrue(resultado.getErrors().isEmpty());
+        assertAviso(resultado, "aumentou de 80 min na semana 1 para 110 min");
+        assertAviso(resultado, "30 min (37.5%)");
+        assertAviso(resultado, "limite permitido a partir de 80 min é 15.0 min");
+        assertAviso(resultado, "no máximo aproximadamente 95 min");
     }
 
     @Test
@@ -231,16 +282,18 @@ class TrainingPlanValidatorTest {
     }
 
     @Test
-    void rejeitaAumentoDeLongaoAvancadoAcimaDeQuinzePorCento() {
+    void avisaAumentoDeLongaoAvancadoAcimaDeQuinzePorCento() {
         PlanoTreinoIAResponseDTO plano = plano(4);
         definirDuracaoLongao(plano, 0, "150 min");
         definirDuracaoLongao(plano, 1, "180 min");
 
         ValidationResult resultado = validar(plano, request(false, false, "42 km"), 4);
 
-        assertErro(resultado, "aumentou de 150 min na semana 1 para 180 min");
-        assertErro(resultado, "limite permitido a partir de 150 min é 22.5 min");
-        assertErro(resultado, "no máximo aproximadamente 172 min");
+        assertTrue(resultado.isValid());
+        assertTrue(resultado.getErrors().isEmpty());
+        assertAviso(resultado, "aumentou de 150 min na semana 1 para 180 min");
+        assertAviso(resultado, "limite permitido a partir de 150 min é 22.5 min");
+        assertAviso(resultado, "no máximo aproximadamente 172 min");
     }
 
     @Test

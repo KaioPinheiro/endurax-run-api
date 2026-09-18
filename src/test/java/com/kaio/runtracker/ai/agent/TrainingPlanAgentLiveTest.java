@@ -113,7 +113,108 @@ class TrainingPlanAgentLiveTest {
                 new Cenario("L2-intermediario-5k", hoje, cincoKmIntermediario(), 5),
                 new Cenario("L3-intermediario-10k", hoje, dezKm(), 6),
                 new Cenario("L4-intermediario-meia", hoje, meia(), 5),
-                new Cenario("L5-avancado-maratona", hoje, maratona(), 6));
+                new Cenario("L5-avancado-maratona", hoje, maratona(), 6),
+                new Cenario("C3-primeiros-10k", hoje, c3(), 6),
+                new Cenario("C4-melhorar-5k", hoje, c4(), 6),
+                new Cenario("C7-melhorar-meia", hoje, c7(), 6));
+    }
+
+    private GerarPlanoTreinoRequestDTO c3() {
+        GerarPlanoTreinoRequestDTO request = base("Primeiros 10 km", "10 km",
+                List.of("terça-feira", "quinta-feira", "sábado", "domingo"));
+        request.setIdade(32);
+        request.setExperienciaCorrida("6 meses a 1 ano");
+        request.setRitmoConfortavel("6:00-6:30 min/km");
+        request.setVolumeSemanalAtual("10-20 km");
+        request.setDiaLongao("domingo");
+        request.setDuracaoSemanas(6);
+        request.setObservacoes("");
+        return request;
+    }
+
+    private GerarPlanoTreinoRequestDTO c4() {
+        GerarPlanoTreinoRequestDTO request = base("Melhorar tempo nos 5 km", "5 km",
+                List.of("terça-feira", "quarta-feira", "sexta-feira", "domingo"));
+        request.setIdade(30);
+        request.setExperienciaCorrida("1 a 3 anos");
+        request.setTempoAtual("25:00");
+        request.setTempoDesejado("23:30");
+        request.setRitmoConfortavel("5:30-6:00 min/km");
+        request.setVolumeSemanalAtual("20-40 km");
+        request.setDiaLongao("domingo");
+        request.setDuracaoSemanas(6);
+        request.setObservacoes("");
+        return request;
+    }
+
+    private GerarPlanoTreinoRequestDTO c7() {
+        GerarPlanoTreinoRequestDTO request = base("Melhorar tempo na Meia Maratona", "21 km",
+                List.of("segunda-feira", "terça-feira", "quinta-feira", "sábado", "domingo"));
+        request.setIdade(33);
+        request.setExperienciaCorrida("Mais de 3 anos");
+        request.setTempoAtual("1:48:00");
+        request.setTempoDesejado("1:42:00");
+        request.setRitmoConfortavel("5:30-6:00 min/km");
+        request.setMaiorDistanciaCorrida("21");
+        request.setVolumeSemanalAtual("40-60 km");
+        request.setDiaLongao("domingo");
+        request.setDuracaoSemanas(6);
+        request.setObservacoes("");
+        return request;
+    }
+
+    @Test
+    void fixturesManuaisRespeitamContratoSemChamarOpenAi() {
+        try (var factory = jakarta.validation.Validation.buildDefaultValidatorFactory()) {
+            var validator = factory.getValidator();
+            List<Cenario> manuais = cenarios().stream()
+                    .filter(cenario -> cenario.id().startsWith("C")).toList();
+            assertThat(manuais).extracting(Cenario::id)
+                    .containsExactly("C3-primeiros-10k", "C4-melhorar-5k", "C7-melhorar-meia");
+            for (Cenario cenario : manuais) {
+                GerarPlanoTreinoRequestDTO request = cenario.request();
+                assertThat(validator.validate(request)).as(cenario.id()).isEmpty();
+                assertThat(request.getDuracaoSemanas()).isEqualTo(6);
+                assertThat(request.getPossuiProva()).isFalse();
+                assertThat(request.getPossuiLesao()).isFalse();
+                assertThat(request.getObservacoes()).isEmpty();
+                assertThat(request.getCorre5KmSemCaminhar()).isNull();
+                assertThat(request.getTempo5Km()).isNull();
+            }
+            assertThat(c3().getTempoAtual()).isNull();
+            assertThat(c3().getTempoDesejado()).isNull();
+            assertThat(c3().getMaiorDistanciaCorrida()).isNull();
+            assertThat(c4().getMaiorDistanciaCorrida()).isNull();
+            assertThat(c7().getMaiorDistanciaCorrida()).isEqualTo("21");
+        }
+    }
+
+    @Test
+    void diagnosticoPreservaDiasPacesEBlocosEmTodasAsTentativas() {
+        TreinoPlanoIAResponseDTO treino = new TreinoPlanoIAResponseDTO();
+        treino.setDiaSemana("sábado");
+        treino.setTipo("Intervalado");
+        treino.setTitulo("Treino de diagnóstico");
+        treino.setDuracaoEstimada("40 min");
+        treino.setDistanciaKm("7");
+        treino.setPaceSugerido("5:30-6:00 min/km");
+        treino.setDescricao("Aquecimento: 10 min a 6:00-6:30 min/km | "
+                + "Principal: 6 x (400 m em 2 min a 1:45-1:55 min/km + 2 min de recuperação) | "
+                + "Desaquecimento: 8 min a 6:30-7:00 min/km\n");
+        LiveCapturingValidator validator = new LiveCapturingValidator("C4-melhorar-5k", 1);
+        for (int tentativa = 0; tentativa <= 2; tentativa++) {
+            validator.tentativa = tentativa;
+            String etapa = tentativa == 0 ? "GENERATION" : "CORRECTION_" + tentativa;
+            assertThat(validator.detalheTreino(1, treino, etapa)).contains(
+                    "cenario=C4-melhorar-5k repeticao=1 tentativa=" + tentativa,
+                    "etapa=" + etapa, "semana=1", "diaSemana=sábado", "tipo=Intervalado",
+                    "titulo=Treino de diagnóstico", "duracaoEstimada=40 min",
+                    "distanciaKm=7", "paceSugerido=5:30-6:00 min/km",
+                    "nome=Aquecimento, instrucao=10 min a 6:00-6:30 min/km",
+                    "nome=Principal, instrucao=6 x (400 m em 2 min a 1:45-1:55 min/km + 2 min de recuperação)",
+                    "nome=Desaquecimento, instrucao=8 min a 6:30-7:00 min/km")
+                    .doesNotContain("\n", "\r");
+        }
     }
 
     private GerarPlanoTreinoRequestDTO primeiros5Km() {
@@ -245,8 +346,8 @@ class TrainingPlanAgentLiveTest {
             List<Integer> longoes = longoes(plano);
             boolean deload = possuiDeload(longoes);
             boolean retomada = possuiRetomadaAposDeload(longoes);
-            boolean regraDisparou = resultado.getErrors().stream()
-                    .anyMatch(erro -> erro.contains("o longão aumentou"));
+            boolean regraDisparou = resultado.getWarnings().stream()
+                    .anyMatch(aviso -> aviso.contains("o longão aumentou"));
             System.out.printf(
                     "LIVE_VALIDATION cenario=%s repeticao=%d tentativa=%d "
                             + "javaErrors=%s javaWarnings=%s longoesMin=%s "
@@ -273,12 +374,43 @@ class TrainingPlanAgentLiveTest {
                         seguro(treino == null ? null : treino.getDistanciaKm()),
                         seguro(treino == null ? null : treino.getDuracaoEstimada()))).toList();
                 System.out.printf(
-                        "LIVE_PLAN cenario=%s repeticao=%d etapa=%s semana=%s volumeKm=%.1f "
+                        "LIVE_PLAN cenario=%s repeticao=%d tentativa=%d etapa=%s semana=%s volumeKm=%.1f "
                                 + "longaoDistancia=%s longaoDuracao=%s sessoes=%s%n",
-                        cenario, repeticao, etapa, semana.getNumeroSemana(), volume,
+                        cenario, repeticao, tentativa, etapa, semana.getNumeroSemana(), volume,
                         seguro(longao == null ? null : longao.getDistanciaKm()),
                         seguro(longao == null ? null : longao.getDuracaoEstimada()), sessoes);
+                for (TreinoPlanoIAResponseDTO treino : treinos) {
+                    if (treino == null) continue;
+                    System.out.println(detalheTreino(semana.getNumeroSemana(), treino, etapa));
+                }
             }
+        }
+
+        private String detalheTreino(Integer semana, TreinoPlanoIAResponseDTO treino, String etapa) {
+            // Os blocos são texto no contrato real. Preserve suas durações, distâncias,
+            // repetições e paces literalmente, sem calcular ou interpretar prescrições.
+            String descricao = treino.getDescricao();
+            List<String> blocos = descricao == null ? List.of() :
+                    java.util.Arrays.stream(descricao.split("\\|"))
+                            .map(bloco -> bloco.split(":", 2))
+                            .map(partes -> partes.length == 2
+                                    ? "{nome=" + textoDiagnostico(partes[0])
+                                            + ", instrucao=" + textoDiagnostico(partes[1]) + "}"
+                                    : "{instrucao=" + textoDiagnostico(partes[0]) + "}")
+                            .toList();
+            return String.format(
+                    "LIVE_PLAN cenario=%s repeticao=%d tentativa=%d etapa=%s semana=%s "
+                            + "diaSemana=%s tipo=%s titulo=%s duracaoEstimada=%s "
+                            + "distanciaKm=%s paceSugerido=%s blocos=%s",
+                    cenario, repeticao, tentativa, etapa, semana,
+                    textoDiagnostico(treino.getDiaSemana()), textoDiagnostico(treino.getTipo()),
+                    textoDiagnostico(treino.getTitulo()), textoDiagnostico(treino.getDuracaoEstimada()),
+                    textoDiagnostico(treino.getDistanciaKm()), textoDiagnostico(treino.getPaceSugerido()),
+                    blocos);
+        }
+
+        private String textoDiagnostico(String valor) {
+            return valor == null ? "null" : valor.replaceAll("[\\r\\n\\t\\p{Cntrl}]+", " ").trim();
         }
 
         private double distanciaKm(TreinoPlanoIAResponseDTO treino) {

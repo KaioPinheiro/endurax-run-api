@@ -63,6 +63,25 @@ class TrainingPlanAgentTest {
     }
 
     @Test
+    void avisoJavaDeProgressaoDoLongaoNaoExigeCorrecaoQuandoReviewerAprova() {
+        PlanoTreinoIAResponseDTO plano = new PlanoTreinoIAResponseDTO();
+        ValidationResult validacao = new ValidationResult(List.of(),
+                List.of("Semana 2: o longão aumentou de 80 min na semana 1 para 110 min."));
+        when(generator.generate(context)).thenReturn(plano);
+        when(validator.validate(plano, context)).thenReturn(validacao);
+        when(reviewer.review(plano, context)).thenReturn(ReviewResult.approved());
+
+        AgentExecutionResult resultado = agent(2).execute(context);
+
+        assertSame(plano, resultado.plano());
+        assertSame(validacao, resultado.validacao());
+        assertTrue(resultado.validacao().isValid());
+        assertEquals(0, resultado.correcoesRealizadas());
+        verify(reviewer).review(plano, context);
+        verify(generator, never()).correct(any(), any(), any(), any());
+    }
+
+    @Test
     void erroEncontradoSolicitaCorrecao() {
         PlanoTreinoIAResponseDTO original = new PlanoTreinoIAResponseDTO();
         PlanoTreinoIAResponseDTO corrigido = new PlanoTreinoIAResponseDTO();

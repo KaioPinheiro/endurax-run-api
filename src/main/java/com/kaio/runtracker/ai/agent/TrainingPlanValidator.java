@@ -28,6 +28,10 @@ import java.util.regex.Pattern;
 @Component
 public class TrainingPlanValidator {
     private static final Pattern NUMERO = Pattern.compile("(\\d+(?:[.,]\\d+)?)");
+    private static final Pattern FAIXA_PACE = Pattern.compile(
+            "(?<![\\d:])(\\d{1,3}):([0-5]\\d)\\s*(?:[-–—]|a)\\s*"
+                    + "(\\d{1,3}):([0-5]\\d)\\s*min\\s*/\\s*km\\b",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern DURACAO_CANONICA =
             Pattern.compile("^\\s*(\\d+)\\s+min\\s*$", Pattern.CASE_INSENSITIVE);
     private static final Map<String, Integer> ORDEM_DIAS = criarOrdemDias();
@@ -141,6 +145,7 @@ public class TrainingPlanValidator {
             boolean treinoCorrida = ehTreinoCorrida(tipo);
             String identificador = StringUtils.hasText(treino.getDiaSemana())
                     ? treino.getDiaSemana() : "dia não informado";
+            validarFaixasPace(treino, prefixo + identificador, errors);
 
             if (!StringUtils.hasText(treino.getDiaSemana())
                     || !StringUtils.hasText(treino.getTitulo())
@@ -222,6 +227,25 @@ public class TrainingPlanValidator {
         }
         if (objetivoExigeLongao(context.request()) && !possuiLongao) {
             errors.add(prefixo + "não possui longão compatível com o objetivo.");
+        }
+    }
+
+    private void validarFaixasPace(
+            TreinoPlanoIAResponseDTO treino, String identificador, List<String> errors) {
+        for (String texto : new String[]{treino.getPaceSugerido(), treino.getDescricao(),
+                treino.getTitulo(), treino.getObservacoes()}) {
+            Matcher matcher = FAIXA_PACE.matcher(valor(texto));
+            while (matcher.find()) {
+                int primeiro = Integer.parseInt(matcher.group(1)) * 60
+                        + Integer.parseInt(matcher.group(2));
+                int segundo = Integer.parseInt(matcher.group(3)) * 60
+                        + Integer.parseInt(matcher.group(4));
+                if (primeiro > segundo) {
+                    errors.add(identificador + " possui faixa de pace invertida: "
+                            + matcher.group() + ". Ordene do mais rápido ao mais lento em min/km, "
+                            + "sem confundir pace com tempo para completar uma repetição.");
+                }
+            }
         }
     }
 
@@ -337,7 +361,7 @@ public class TrainingPlanValidator {
                         + indice + " e " + (indice + 1) + ".");
             }
         }
-        validarProgressaoLongoes(semanas, errors);
+        validarProgressaoLongoes(semanas, warnings);
 
         if (provaDentroDoCiclo(context) && volumes.size() >= 2) {
             double penultima = volumes.get(volumes.size() - 2);
@@ -358,7 +382,7 @@ public class TrainingPlanValidator {
 
     private void validarProgressaoLongoes(
             List<SemanaPlanoIAResponseDTO> semanas,
-            List<String> errors) {
+            List<String> warnings) {
         for (int indice = 1; indice < semanas.size(); indice++) {
             OptionalInt anterior = duracaoLongaoMinutos(semanas.get(indice - 1));
             OptionalInt atual = duracaoLongaoMinutos(semanas.get(indice));
@@ -373,7 +397,7 @@ public class TrainingPlanValidator {
             if (aumento > limite) {
                 double percentual = aumento * 100.0 / minutosAnteriores;
                 int maximoPermitido = (int) Math.floor(minutosAnteriores + limite);
-                errors.add("Semana " + (indice + 1) + ": o longão aumentou de "
+                warnings.add("Semana " + (indice + 1) + ": o longão aumentou de "
                         + minutosAnteriores + " min na semana " + indice + " para "
                         + minutosAtuais + " min. O aumento foi de " + aumento + " min ("
                         + String.format(Locale.ROOT, "%.1f", percentual)
