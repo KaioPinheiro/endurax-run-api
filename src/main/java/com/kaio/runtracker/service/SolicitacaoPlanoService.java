@@ -50,8 +50,8 @@ public class SolicitacaoPlanoService {
             solicitacao.setCodigoAtendimento(gerarCodigoAtendimento());
             solicitacao.setStatus(SolicitacaoPlanoStatus.PENDING);
             SolicitacaoPlano salva = repository.save(solicitacao);
-            logger.info("Solicitação de plano criada: codigoAtendimento={}, solicitacaoPlanoId={}, status={}",
-                    salva.getCodigoAtendimento(), salva.getId(), salva.getStatus());
+            logger.info("Solicitação de plano criada: codigoAtendimento={}, solicitacaoPlanoId={}, email={}, status={}",
+                    salva.getCodigoAtendimento(), salva.getId(), salva.getEmail(), salva.getStatus());
             return new CriarSolicitacaoPlanoResponseDTO(salva.getId(), salva.getStatus());
         } catch (IllegalArgumentException exception) {
             throw new PagamentoException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);

@@ -94,21 +94,23 @@ public class GeracaoPlanoTransacaoService {
             pagamento.getSolicitacaoPlano().setStatus(SolicitacaoPlanoStatus.PROCESSING);
             pagamentoRepository.save(pagamento);
             logger.info(
-                    "codigoAtendimento={} solicitacaoPlanoId={} pagamentoId={} etapa=RESERVATION status=SUCCESS",
+                    "codigoAtendimento={} solicitacaoPlanoId={} pagamentoId={} email={} etapa=RESERVATION status=SUCCESS",
                     pagamento.getSolicitacaoPlano().getCodigoAtendimento(),
-                    pagamento.getSolicitacaoPlano().getId(), pagamentoId);
+                    pagamento.getSolicitacaoPlano().getId(), pagamentoId,
+                    pagamento.getEmailPagador());
             return Optional.of(new GeracaoContexto(
                     pagamentoId, pagamento.getSolicitacaoPlano().getId(),
-                    pagamento.getSolicitacaoPlano().getCodigoAtendimento(), formulario));
+                    pagamento.getSolicitacaoPlano().getCodigoAtendimento(),
+                    pagamento.getEmailPagador(), formulario));
         } catch (JsonProcessingException exception) {
             pagamento.setGeracaoStatus(GeracaoPlanoStatus.FAILED);
             pagamento.setGeracaoMensagem(MENSAGEM_FALHA);
             pagamento.getSolicitacaoPlano().setStatus(SolicitacaoPlanoStatus.FAILED);
             pagamentoRepository.save(pagamento);
             logger.error(
-                    "codigoAtendimento={} solicitacaoPlanoId={} etapa=RESERVATION status=FAILED motivo=formulario_invalido",
+                    "codigoAtendimento={} solicitacaoPlanoId={} email={} etapa=RESERVATION status=FAILED motivo=formulario_invalido",
                     pagamento.getSolicitacaoPlano().getCodigoAtendimento(),
-                    pagamento.getSolicitacaoPlano().getId(), exception);
+                    pagamento.getSolicitacaoPlano().getId(), pagamento.getEmailPagador(), exception);
             return Optional.empty();
         }
     }
@@ -159,6 +161,7 @@ public class GeracaoPlanoTransacaoService {
             Long pagamentoId,
             Long solicitacaoPlanoId,
             String codigoAtendimento,
+            String email,
             GerarPlanoTreinoRequestDTO formulario) {
     }
 }

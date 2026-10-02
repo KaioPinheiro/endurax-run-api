@@ -79,6 +79,9 @@ public class PagamentoService {
                 if (!emailNormalizado.equals(existente.getEmailPagador())) {
                     throw new PagamentoException(HttpStatus.NOT_FOUND, "Pagamento não encontrado.");
                 }
+                logger.info("Cobrança Pix reutilizada: codigoAtendimento={}, pagamentoId={}, email={}, status={}",
+                        codigoAtendimento(existente), existente.getId(), existente.getEmailPagador(),
+                        existente.getStatus());
                 return respostaCriacao(existente);
             }
         }
@@ -89,8 +92,8 @@ public class PagamentoService {
         OffsetDateTime expiracaoRequest = OffsetDateTime.now(clock)
                 .plusMinutes(properties.getExpiracaoPixMinutos());
 
-        logger.info("Criando cobrança Pix: codigoAtendimento={}, valor={}",
-                codigoAtendimento(solicitacao), properties.getValorPlano());
+        logger.info("Criando cobrança Pix: codigoAtendimento={}, email={}, valor={}",
+                codigoAtendimento(solicitacao), emailNormalizado, properties.getValorPlano());
 
         MercadoPagoOrderResponse order = mercadoPagoClient.criarOrderPix(
                 emailNormalizado,
@@ -125,9 +128,9 @@ public class PagamentoService {
             solicitacao.setStatus(SolicitacaoPlanoStatus.PAYMENT_PENDING);
             solicitacaoPlanoRepository.save(solicitacao);
         }
-        logger.info("Cobrança Pix criada: codigoAtendimento={}, pagamentoId={}, orderId={}, status={}, expiraEm={}",
-                codigoAtendimento(salvo), salvo.getId(), salvo.getOrderExternalId(), salvo.getStatus(),
-                salvo.getDataExpiracao());
+        logger.info("Cobrança Pix criada: codigoAtendimento={}, pagamentoId={}, email={}, orderId={}, status={}, expiraEm={}",
+                codigoAtendimento(salvo), salvo.getId(), salvo.getEmailPagador(),
+                salvo.getOrderExternalId(), salvo.getStatus(), salvo.getDataExpiracao());
         return respostaCriacao(salvo);
     }
 
@@ -172,8 +175,9 @@ public class PagamentoService {
         if (pagamento.getStatus() == PagamentoStatus.APPROVED
                 || pagamento.getStatus() == PagamentoStatus.CANCELLED
                 || pagamento.getStatus() == PagamentoStatus.EXPIRED) {
-            logger.info("Reconciliação ignorada: status terminal={}, pagamentoId={}, orderId={}",
-                    pagamento.getStatus(), pagamento.getId(), pagamento.getOrderExternalId());
+            logger.info("Reconciliação ignorada: status terminal={}, pagamentoId={}, email={}, orderId={}",
+                    pagamento.getStatus(), pagamento.getId(), pagamento.getEmailPagador(),
+                    pagamento.getOrderExternalId());
             return respostaStatus(pagamento);
         }
 
@@ -194,9 +198,9 @@ public class PagamentoService {
         }
         if (novoStatus == PagamentoStatus.APPROVED) restaurarSolicitacaoAprovada(pagamento);
         Pagamento atualizado = repository.save(pagamento);
-        logger.info("Status Pix atualizado: codigoAtendimento={}, pagamentoId={}, orderId={}, status={}, statusDetail={}",
-                codigoAtendimento(atualizado), atualizado.getId(), atualizado.getOrderExternalId(),
-                atualizado.getStatus(), atualizado.getStatusDetail());
+        logger.info("Status Pix atualizado: codigoAtendimento={}, pagamentoId={}, email={}, orderId={}, status={}, statusDetail={}",
+                codigoAtendimento(atualizado), atualizado.getId(), atualizado.getEmailPagador(),
+                atualizado.getOrderExternalId(), atualizado.getStatus(), atualizado.getStatusDetail());
         return respostaStatus(atualizado);
     }
 
@@ -221,22 +225,23 @@ public class PagamentoService {
             logger.warn("Webhook Mercado Pago: pagamento não encontrado, orderId={}", order.id());
             return null;
         }
-        logger.info("Webhook Mercado Pago: pagamento localizado, codigoAtendimento={}, pagamentoId={}, orderId={}",
-                codigoAtendimento(pagamento), pagamento.getId(), order.id());
+        logger.info("Webhook Mercado Pago: pagamento localizado, codigoAtendimento={}, pagamentoId={}, email={}, orderId={}",
+                codigoAtendimento(pagamento), pagamento.getId(), pagamento.getEmailPagador(), order.id());
 
         if (pagamento.getStatus() == PagamentoStatus.APPROVED) {
             Long garantirGeracao = idParaGarantirGeracao(pagamento);
-            logger.info("Webhook Mercado Pago sem novo estado financeiro: pagamentoId={}, orderId={}, "
+            logger.info("Webhook Mercado Pago sem novo estado financeiro: pagamentoId={}, email={}, orderId={}, "
                             + "status={}, garantirGeracao={}",
-                    pagamento.getId(), order.id(), pagamento.getStatus(), garantirGeracao != null);
+                    pagamento.getId(), pagamento.getEmailPagador(), order.id(),
+                    pagamento.getStatus(), garantirGeracao != null);
             return garantirGeracao;
         }
 
         if (pagamento.getStatus() == PagamentoStatus.CANCELLED) {
             PagamentoStatus statusRemotoAtual = mapearStatus(statusRemoto, statusDetailRemoto);
             if (statusRemotoAtual != PagamentoStatus.APPROVED) {
-                logger.info("Webhook Mercado Pago ignorado para cancelamento terminal: pagamentoId={}, orderId={}",
-                        pagamento.getId(), order.id());
+                logger.info("Webhook Mercado Pago ignorado para cancelamento terminal: pagamentoId={}, email={}, orderId={}",
+                        pagamento.getId(), pagamento.getEmailPagador(), order.id());
                 return null;
             }
         }
@@ -258,11 +263,13 @@ public class PagamentoService {
         if (novoStatus == PagamentoStatus.APPROVED) restaurarSolicitacaoAprovada(pagamento);
         pagamento.setAtualizadoEm(LocalDateTime.now(clock));
         repository.save(pagamento);
-        logger.info("Webhook Mercado Pago: status atualizado, codigoAtendimento={}, pagamentoId={}, orderId={}, statusAnterior={}, novoStatus={}",
-                codigoAtendimento(pagamento), pagamento.getId(), order.id(), statusAnterior, novoStatus);
+        logger.info("Webhook Mercado Pago: status atualizado, codigoAtendimento={}, pagamentoId={}, email={}, orderId={}, statusAnterior={}, novoStatus={}",
+                codigoAtendimento(pagamento), pagamento.getId(), pagamento.getEmailPagador(),
+                order.id(), statusAnterior, novoStatus);
         Long garantirGeracao = idParaGarantirGeracao(pagamento);
         if (garantirGeracao != null) {
-            logger.info("Pagamento aprovado; geração automática liberada: pagamentoId={}", pagamento.getId());
+            logger.info("Pagamento aprovado; geração automática liberada: pagamentoId={}, email={}",
+                    pagamento.getId(), pagamento.getEmailPagador());
         }
         return garantirGeracao;
     }
@@ -496,6 +503,9 @@ public class PagamentoService {
             pagamento.getSolicitacaoPlano().setStatus(SolicitacaoPlanoStatus.CANCELLED);
         }
         repository.save(pagamento);
+        logger.info("Pagamento cancelado: codigoAtendimento={}, pagamentoId={}, email={}, orderId={}, status={}",
+                codigoAtendimento(pagamento), pagamento.getId(), pagamento.getEmailPagador(),
+                pagamento.getOrderExternalId(), pagamento.getStatus());
     }
 
     private void registrarAprovacao(Pagamento pagamento, MercadoPagoOrderResponse order) {
@@ -504,6 +514,9 @@ public class PagamentoService {
         if (pagamento.getPagoEm() == null) pagamento.setPagoEm(LocalDateTime.now(clock));
         restaurarSolicitacaoAprovada(pagamento);
         repository.save(pagamento);
+        logger.info("Pagamento aprovado: codigoAtendimento={}, pagamentoId={}, email={}, orderId={}",
+                codigoAtendimento(pagamento), pagamento.getId(), pagamento.getEmailPagador(),
+                pagamento.getOrderExternalId());
     }
 
     private void restaurarSolicitacaoAprovada(Pagamento pagamento) {

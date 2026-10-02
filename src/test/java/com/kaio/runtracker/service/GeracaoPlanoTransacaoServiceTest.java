@@ -63,7 +63,7 @@ class GeracaoPlanoTransacaoServiceTest {
         GerarPlanoTreinoRequestDTO formulario = new GerarPlanoTreinoRequestDTO();
         PlanoTreinoIAResponseDTO resposta = new PlanoTreinoIAResponseDTO();
         var contexto = new GeracaoPlanoTransacaoService.GeracaoContexto(
-                1L, 123L, "END-7K4P9X", formulario);
+                1L, 123L, "END-7K4P9X", "atleta@example.com", formulario);
         when(trainingPlanService.salvarPlanoGerado(formulario, resposta)).thenReturn(plano);
 
         Long planoId = service.concluir(contexto, resposta);
@@ -92,6 +92,7 @@ class GeracaoPlanoTransacaoServiceTest {
         var reserva = service.reservar(1L);
 
         assertTrue(reserva.isPresent());
+        assertEquals("atleta@example.com", reserva.orElseThrow().email());
         assertEquals(GeracaoPlanoStatus.PROCESSING, pagamento.getGeracaoStatus());
         assertEquals(SolicitacaoPlanoStatus.PROCESSING, pagamento.getSolicitacaoPlano().getStatus());
     }
@@ -176,6 +177,7 @@ class GeracaoPlanoTransacaoServiceTest {
         Pagamento pagamento = new Pagamento();
         pagamento.setId(1L);
         pagamento.setStatus(PagamentoStatus.APPROVED);
+        pagamento.setEmailPagador("atleta@example.com");
         SolicitacaoPlano solicitacao = new SolicitacaoPlano();
         solicitacao.setId(123L);
         solicitacao.setStatus(SolicitacaoPlanoStatus.PROCESSING);

@@ -43,12 +43,13 @@ public class GeracaoPlanoService {
         String solicitacaoPlanoId = String.valueOf(contexto.solicitacaoPlanoId());
         MDC.put("solicitacaoPlanoId", solicitacaoPlanoId);
         if (contexto.codigoAtendimento() != null) MDC.put("codigoAtendimento", contexto.codigoAtendimento());
+        if (contexto.email() != null) MDC.put("email", contexto.email());
         MDC.put("etapa", "GENERATION");
         try {
             int duracaoSemanas = duracaoCalculator.calcular(contexto.formulario());
             logger.info(
-                    "codigoAtendimento={} solicitacaoPlanoId={} etapa=PIPELINE status=STARTED semanas={} diasDisponiveis={}",
-                    contexto.codigoAtendimento(), contexto.solicitacaoPlanoId(), duracaoSemanas,
+                    "codigoAtendimento={} solicitacaoPlanoId={} email={} etapa=PIPELINE status=STARTED semanas={} diasDisponiveis={}",
+                    contexto.codigoAtendimento(), contexto.solicitacaoPlanoId(), contexto.email(), duracaoSemanas,
                     contexto.formulario().getDiasDisponiveis() == null
                             ? 0 : contexto.formulario().getDiasDisponiveis().size());
             AgentExecutionContext agentContext = new AgentExecutionContext(
@@ -62,26 +63,29 @@ public class GeracaoPlanoService {
             Long planoId = transacaoService.concluir(contexto, plano);
             if (planoId == null) {
                 logger.error(
-                        "codigoAtendimento={} solicitacaoPlanoId={} etapa=PERSISTENCE status=FAILED motivo=plano_nao_persistido duracaoMs={}",
-                        contexto.codigoAtendimento(), contexto.solicitacaoPlanoId(), tempoMs(inicioTotal));
+                        "codigoAtendimento={} solicitacaoPlanoId={} email={} etapa=PERSISTENCE status=FAILED motivo=plano_nao_persistido duracaoMs={}",
+                        contexto.codigoAtendimento(), contexto.solicitacaoPlanoId(), contexto.email(),
+                        tempoMs(inicioTotal));
             } else {
                 logger.info(
-                        "codigoAtendimento={} solicitacaoPlanoId={} etapa=PERSISTENCE status=SUCCESS planoId={} semanas={}",
-                        contexto.codigoAtendimento(), contexto.solicitacaoPlanoId(), planoId,
+                        "codigoAtendimento={} solicitacaoPlanoId={} email={} etapa=PERSISTENCE status=SUCCESS planoId={} semanas={}",
+                        contexto.codigoAtendimento(), contexto.solicitacaoPlanoId(), contexto.email(), planoId,
                         plano != null && plano.getSemanas() != null ? plano.getSemanas().size() : 0);
-                logger.info("codigoAtendimento={} solicitacaoPlanoId={} etapa=PIPELINE status=SUCCESS duracaoMs={}",
-                        contexto.codigoAtendimento(), contexto.solicitacaoPlanoId(), tempoMs(inicioTotal));
+                logger.info("codigoAtendimento={} solicitacaoPlanoId={} email={} etapa=PIPELINE status=SUCCESS duracaoMs={}",
+                        contexto.codigoAtendimento(), contexto.solicitacaoPlanoId(), contexto.email(),
+                        tempoMs(inicioTotal));
             }
         } catch (Exception exception) {
             transacaoService.falhar(pagamentoId);
             logger.error(
-                    "codigoAtendimento={} solicitacaoPlanoId={} etapa={} status=FAILED tipoErro={}",
-                    contexto.codigoAtendimento(), contexto.solicitacaoPlanoId(), MDC.get("etapa"),
+                    "codigoAtendimento={} solicitacaoPlanoId={} email={} etapa={} status=FAILED tipoErro={}",
+                    contexto.codigoAtendimento(), contexto.solicitacaoPlanoId(), contexto.email(), MDC.get("etapa"),
                     exception.getClass().getSimpleName(), exception);
         } finally {
             MDC.remove("etapa");
             MDC.remove("solicitacaoPlanoId");
             MDC.remove("codigoAtendimento");
+            MDC.remove("email");
         }
     }
 
