@@ -164,6 +164,18 @@ class AccessLogFilterTest {
     }
 
     @Test
+    void ocultaTokenDoPlanoNasRotasDoIntervalsIcu() throws Exception {
+        String token = "550e8400-e29b-41ce-98fd-7fd50b809672";
+
+        executar(requisicao("/api/integrations/intervals-icu/plans/" + token + "/authorize"),
+                new MockHttpServletResponse(), 302);
+
+        assertThat(log())
+                .contains("uri=/api/integrations/intervals-icu/plans/[REDACTED]/authorize")
+                .doesNotContain(token);
+    }
+
+    @Test
     void mantemRotaComumInalterada() throws Exception {
         executar(requisicao("/api/teste/123"), new MockHttpServletResponse(), 200);
 

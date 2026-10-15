@@ -21,7 +21,7 @@ class ProductionProfileConfigTest {
         assertFalse(applicationProperties.contains("spring.profiles.active=dev"));
         assertTrue(applicationProperties.contains("spring.profiles.default=dev"));
         assertTrue(dockerfile.contains("--spring.profiles.active=prod"));
-        assertTrue(applicationProdProperties.contains("logging.pattern.console=%-5level %msg%n"));
+	assertTrue(applicationProdProperties.contains("logging.pattern.console=%-5level email=%X{email:-} %msg%n"));
         assertTrue(applicationProdProperties.contains("logging.level.org.springframework.orm.jpa=WARN"));
         assertTrue(applicationProdProperties.contains("logging.level.org.apache.catalina=WARN"));
         assertTrue(applicationProdProperties.contains("logging.level.org.springframework.boot.web.embedded.tomcat=WARN"));

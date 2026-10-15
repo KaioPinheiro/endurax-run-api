@@ -1,0 +1,19 @@
+package com.kaio.runtracker.exception;
+
+import org.springframework.http.HttpStatus;
+
+public class IntervalsIcuWorkoutException extends RuntimeException {
+    private final HttpStatus status;
+
+    public IntervalsIcuWorkoutException(HttpStatus status, String message) {
+        super(message);
+        this.status = status;
+    }
+
+    public IntervalsIcuWorkoutException(HttpStatus status, String message, Throwable cause) {
+        super(message, cause);
+        this.status = status;
+    }
+
+    public HttpStatus getStatus() { return status; }
+}

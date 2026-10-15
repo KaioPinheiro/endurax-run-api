@@ -36,4 +36,18 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(422)
                 .body(Map.of("erro", exception.getMessage()));
     }
+
+    @ExceptionHandler(IntervalsIcuOAuthException.class)
+    public ResponseEntity<Map<String, String>> tratarIntervalsIcuOAuth(
+            IntervalsIcuOAuthException exception) {
+        return ResponseEntity.status(exception.getStatus())
+                .body(Map.of("erro", exception.getMessage()));
+    }
+
+    @ExceptionHandler(IntervalsIcuWorkoutException.class)
+    public ResponseEntity<Map<String, String>> tratarIntervalsIcuWorkout(
+            IntervalsIcuWorkoutException exception) {
+        return ResponseEntity.status(exception.getStatus())
+                .body(Map.of("erro", exception.getMessage()));
+    }
 }

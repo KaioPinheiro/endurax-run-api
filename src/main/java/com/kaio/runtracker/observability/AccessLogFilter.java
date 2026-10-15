@@ -31,6 +31,8 @@ public class AccessLogFilter extends OncePerRequestFilter {
             Pattern.compile("^(/training-plans/public/)[^/]+");
     private static final Pattern PAGAMENTO_TOKEN_PATH =
             Pattern.compile("^(/api/pagamentos/public/)[^/]+");
+    private static final Pattern INTERVALS_PLAN_TOKEN_PATH = Pattern.compile(
+            "^(/api/integrations/intervals-icu/plans/)[^/]+");
     private static final Logger logger = LoggerFactory.getLogger(AccessLogFilter.class);
 
     @Override
@@ -91,6 +93,7 @@ public class AccessLogFilter extends OncePerRequestFilter {
     private String sanitizarUri(String uri) {
         if (uri == null) return null;
         String sanitizada = PLANO_TOKEN_PATH.matcher(uri).replaceFirst("$1[REDACTED]");
-        return PAGAMENTO_TOKEN_PATH.matcher(sanitizada).replaceFirst("$1[REDACTED]");
+        sanitizada = PAGAMENTO_TOKEN_PATH.matcher(sanitizada).replaceFirst("$1[REDACTED]");
+        return INTERVALS_PLAN_TOKEN_PATH.matcher(sanitizada).replaceFirst("$1[REDACTED]");
     }
 }

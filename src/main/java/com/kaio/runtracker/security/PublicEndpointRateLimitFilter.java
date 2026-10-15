@@ -141,6 +141,20 @@ public class PublicEndpointRateLimitFilter extends OncePerRequestFilter {
             return new Rule("CONSULTA", properties.getConsulta(),
                     "/training-plans/public/[REDACTED]");
         }
+        if ("GET".equals(method)
+                && uri.matches("^/api/integrations/intervals-icu/plans/[^/]+/(authorize|status)$")) {
+            String suffix = uri.endsWith("/authorize") ? "authorize" : "status";
+            return new Rule("INTERVALS_OAUTH", properties.getConsulta(),
+                    "/api/integrations/intervals-icu/plans/[REDACTED]/" + suffix);
+        }
+        if ("POST".equals(method)
+                && uri.matches("^/api/integrations/intervals-icu/plans/[^/]+/workouts$")) {
+            return new Rule("INTERVALS_WORKOUT", properties.getGeracao(),
+                    "/api/integrations/intervals-icu/plans/[REDACTED]/workouts");
+        }
+        if ("GET".equals(method) && "/api/integrations/intervals-icu/callback".equals(uri)) {
+            return new Rule("INTERVALS_OAUTH_CALLBACK", properties.getConsulta(), uri);
+        }
         return null;
     }
 
