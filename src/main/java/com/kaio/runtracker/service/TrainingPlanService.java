@@ -9,6 +9,7 @@ import com.kaio.runtracker.dto.PublicTrainingPlanResponseDTO;
 import com.kaio.runtracker.dto.TrainingPlanRequestDTO;
 import com.kaio.runtracker.dto.TrainingPlanResponseDTO;
 import com.kaio.runtracker.entity.TrainingPlan;
+import com.kaio.runtracker.repository.PagamentoRepository;
 import com.kaio.runtracker.repository.TrainingPlanRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,10 +20,15 @@ import java.util.List;
 public class TrainingPlanService {
 
     private final TrainingPlanRepository repository;
+    private final PagamentoRepository pagamentoRepository;
     private final ObjectMapper objectMapper;
 
-    public TrainingPlanService(TrainingPlanRepository repository, ObjectMapper objectMapper) {
+    public TrainingPlanService(
+            TrainingPlanRepository repository,
+            PagamentoRepository pagamentoRepository,
+            ObjectMapper objectMapper) {
         this.repository = repository;
+        this.pagamentoRepository = pagamentoRepository;
         this.objectMapper = objectMapper;
     }
 
@@ -75,12 +81,31 @@ public class TrainingPlanService {
         repository.deleteById(id);
     }
 
+    @Transactional(readOnly = true)
     public PublicTrainingPlanResponseDTO buscarPlanoPagoPorToken(String token) {
-        return repository.findPlanoPagoByToken(token)
-                .map(trainingPlan -> new PublicTrainingPlanResponseDTO(
-                        trainingPlan.getNome(), trainingPlan.getObjetivo(),
-                        trainingPlan.getNivel(), trainingPlan.getDescricao()))
+        return pagamentoRepository.findByValidPlanAccessToken(token)
+                .map(pagamento -> {
+                    TrainingPlan trainingPlan = pagamento.getTrainingPlan();
+                    GerarPlanoTreinoRequestDTO formulario = lerFormularioPersistido(
+                            pagamento.getSolicitacaoPlano() == null
+                                    ? null
+                                    : pagamento.getSolicitacaoPlano().getDadosFormularioJson());
+                    return new PublicTrainingPlanResponseDTO(
+                            trainingPlan.getNome(), trainingPlan.getObjetivo(),
+                            trainingPlan.getNivel(), trainingPlan.getDescricao(),
+                            formulario == null ? null : formulario.getDataInicioPlano(),
+                            formulario == null ? null : formulario.getDiasDisponiveis());
+                })
                 .orElse(null);
+    }
+
+    private GerarPlanoTreinoRequestDTO lerFormularioPersistido(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return objectMapper.readValue(json, GerarPlanoTreinoRequestDTO.class);
+        } catch (JsonProcessingException exception) {
+            return null;
+        }
     }
 
     @Transactional

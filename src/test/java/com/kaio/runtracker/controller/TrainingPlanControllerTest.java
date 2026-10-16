@@ -12,6 +12,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.time.LocalDate;
+import java.util.List;
+
 class TrainingPlanControllerTest {
 
     private TrainingPlanService service;
@@ -32,11 +35,15 @@ class TrainingPlanControllerTest {
     @Test
     void tokenValidoRetornaSomentePlanoAssociado() throws Exception {
         when(service.buscarPlanoPagoPorToken("token-compra-a"))
-                .thenReturn(new PublicTrainingPlanResponseDTO("Plano A", "5 km", "iniciante", "{}"));
+                .thenReturn(new PublicTrainingPlanResponseDTO(
+                        "Plano A", "5 km", "iniciante", "{}",
+                        LocalDate.of(2026, 10, 19), List.of("segunda-feira")));
 
         mockMvc.perform(get("/training-plans/public/token-compra-a"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nome").value("Plano A"))
+                .andExpect(jsonPath("$.dataInicioPlano").value("2026-10-19"))
+                .andExpect(jsonPath("$.diasDisponiveis[0]").value("segunda-feira"))
                 .andExpect(jsonPath("$.id").doesNotExist());
     }
 

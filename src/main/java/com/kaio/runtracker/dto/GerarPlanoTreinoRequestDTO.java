@@ -51,6 +51,8 @@ public class GerarPlanoTreinoRequestDTO {
     @NotEmpty(message = "Selecione pelo menos um dia disponível para treinar")
     private List<String> diasDisponiveis;
 
+    private LocalDate dataInicioPlano;
+
     @JsonAlias("longRunDay")
     private String diaLongao;
 
