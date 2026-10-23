@@ -56,7 +56,7 @@ class PagamentoServiceTest {
         solicitacaoPlanoRepository = mock(SolicitacaoPlanoRepository.class);
         MercadoPagoProperties properties = new MercadoPagoProperties();
         properties.setAccessToken("TEST_TOKEN");
-        properties.setValorPlano(new BigDecimal("12.90"));
+        properties.setValorPlano(new BigDecimal("19.90"));
         properties.setExpiracaoPixMinutos(15);
         Clock clock = Clock.fixed(
                 Instant.parse("2026-07-20T15:00:00Z"),
@@ -68,7 +68,7 @@ class PagamentoServiceTest {
     @Test
     void criaOrderPixPersisteCobrancaERetornaQrCode() {
         when(client.criarOrderPix(eq("cliente@email.com"), any(), any(),
-                eq(new BigDecimal("12.90")))).thenReturn(orderPendente("QR-CODE", "BASE64"));
+                eq(new BigDecimal("19.90")))).thenReturn(orderPendente("QR-CODE", "BASE64"));
         when(repository.save(any(Pagamento.class))).thenAnswer(invocation -> {
             Pagamento pagamento = invocation.getArgument(0);
             pagamento.setId(1L);
@@ -80,7 +80,7 @@ class PagamentoServiceTest {
         assertEquals(1L, response.pagamentoId());
         assertTrue(response.acessoToken() != null && !response.acessoToken().isBlank());
         assertEquals(PagamentoStatus.PENDING, response.status());
-        assertEquals(new BigDecimal("12.90"), response.valor());
+        assertEquals(new BigDecimal("19.90"), response.valor());
         assertEquals("QR-CODE", response.pixCopiaCola());
         assertEquals("BASE64", response.qrCodeBase64());
         assertEquals(OffsetDateTime.of(2026, 7, 20, 12, 15, 0, 0,
@@ -93,13 +93,13 @@ class PagamentoServiceTest {
     @Test
     void preservaInstanteUtcNaExpiracaoDeQuinzeMinutos() {
         MercadoPagoProperties properties = new MercadoPagoProperties();
-        properties.setValorPlano(new BigDecimal("12.90"));
+        properties.setValorPlano(new BigDecimal("19.90"));
         properties.setExpiracaoPixMinutos(15);
         Clock clockUtc = Clock.fixed(Instant.parse("2026-07-20T15:00:00Z"), ZoneOffset.UTC);
         PagamentoService serviceUtc = new PagamentoService(
                 repository, client, properties, solicitacaoPlanoRepository, clockUtc);
         when(client.criarOrderPix(eq("cliente@email.com"), any(), any(),
-                eq(new BigDecimal("12.90")))).thenReturn(orderPendente("QR-CODE", "BASE64"));
+                eq(new BigDecimal("19.90")))).thenReturn(orderPendente("QR-CODE", "BASE64"));
         when(repository.save(any(Pagamento.class))).thenAnswer(invocation -> {
             Pagamento pagamento = invocation.getArgument(0);
             pagamento.setId(1L);
@@ -131,7 +131,7 @@ class PagamentoServiceTest {
         SolicitacaoPlano solicitacao = solicitacaoValida(false, null);
         when(solicitacaoPlanoRepository.findById(7L)).thenReturn(Optional.of(solicitacao));
         when(client.criarOrderPix(eq("cliente@email.com"), any(), any(),
-                eq(new BigDecimal("12.90")))).thenReturn(orderPendente("QR-CODE", "BASE64"));
+                eq(new BigDecimal("19.90")))).thenReturn(orderPendente("QR-CODE", "BASE64"));
         when(repository.save(any(Pagamento.class))).thenAnswer(invocation -> {
             Pagamento pagamento = invocation.getArgument(0);
             pagamento.setId(1L);
@@ -590,7 +590,7 @@ class PagamentoServiceTest {
         assertEquals(PagamentoStatus.PENDING, resultado.pagamentoStatus());
         assertEquals(GeracaoPlanoStatus.PENDING, resultado.geracaoStatus());
         assertEquals(null, resultado.planoToken());
-        assertEquals(new BigDecimal("12.90"), resultado.valor());
+        assertEquals(new BigDecimal("19.90"), resultado.valor());
         assertEquals("QR-CODE", resultado.pixCopiaCola());
         assertEquals("BASE64", resultado.qrCodeBase64());
         assertEquals("END-7K4P9X", resultado.codigoAtendimento());
@@ -608,7 +608,7 @@ class PagamentoServiceTest {
         assertEquals(1L, resultado.pagamentoId());
         assertEquals("QR-CODE", resultado.pixCopiaCola());
         assertEquals("BASE64", resultado.qrCodeBase64());
-        assertEquals(new BigDecimal("12.90"), resultado.valor());
+        assertEquals(new BigDecimal("19.90"), resultado.valor());
     }
 
     @Test
@@ -684,7 +684,7 @@ class PagamentoServiceTest {
         pagamento.setExternalReference("EXT123");
         pagamento.setStatus(PagamentoStatus.PENDING);
         pagamento.setStatusDetail("waiting_transfer");
-        pagamento.setValor(new BigDecimal("12.90"));
+        pagamento.setValor(new BigDecimal("19.90"));
         pagamento.setPixCopiaCola("QR-CODE");
         pagamento.setQrCodeBase64("BASE64");
         pagamento.setTicketUrl("https://ticket");

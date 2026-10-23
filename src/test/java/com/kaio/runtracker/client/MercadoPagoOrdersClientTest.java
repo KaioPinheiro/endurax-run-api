@@ -79,6 +79,8 @@ class MercadoPagoOrdersClientTest {
         server.expect(once(), requestTo("https://api.mercadopago.com/v1/orders"))
                 .andExpect(method(POST))
                 .andExpect(content().string(containsString("\"expiration_time\":\"PT15M\"")))
+                .andExpect(content().string(containsString("\"total_amount\":\"19.90\"")))
+                .andExpect(content().string(containsString("\"amount\":\"19.90\"")))
                 .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators
                         .withSuccess("{\"id\":\"ORD123\",\"status\":\"pending\"}",
                                 MediaType.APPLICATION_JSON));
@@ -88,7 +90,7 @@ class MercadoPagoOrdersClientTest {
         MercadoPagoOrdersClient client = new MercadoPagoOrdersClient(properties, builder.build());
 
         client.criarOrderPix("cliente@email.com", "referencia", "idempotencia",
-                new BigDecimal("12.90"));
+                new BigDecimal("19.90"));
 
         server.verify();
     }

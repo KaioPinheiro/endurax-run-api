@@ -19,7 +19,7 @@ class ConfigPublicaControllerTest {
         fluxo.setModo(FluxoPlanoModo.TESTE);
         MercadoPagoProperties mercadoPago = new MercadoPagoProperties();
         mercadoPago.setAmbienteTeste(true);
-        mercadoPago.setValorPlano(new BigDecimal("12.90"));
+        mercadoPago.setValorPlano(new BigDecimal("19.90"));
         mercadoPago.setAccessToken("NAO_DEVE_SER_EXPOSTO");
 
         var response = new ConfigPublicaController(fluxo, mercadoPago).consultar();
@@ -27,7 +27,7 @@ class ConfigPublicaControllerTest {
         assertEquals(FluxoPlanoModo.TESTE, response.modoFluxoPlano());
         assertTrue(response.pagamentoObrigatorio());
         assertTrue(response.ambientePagamentoTeste());
-        assertEquals(new BigDecimal("12.90"), response.valorPlano());
+        assertEquals(new BigDecimal("19.90"), response.valorPlano());
         assertFalse(response.toString().contains("NAO_DEVE_SER_EXPOSTO"));
     }
 }
